@@ -1,0 +1,103 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+/* ── Regola Pro ──────────────────────────────────────────────── */
+@font-face {
+  font-family: "Regola Pro";
+  src: url("/fonts/RegolaPro-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Regola Pro";
+  src: url("/fonts/RegolaPro-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Brand palette — dark mode (default) ─────────────────────── */
+:root {
+  --bg:        #050505;
+  --border:    #d3d3d3;
+  --highlight: #b75fff;
+  --text:      #ffffff;
+
+  /* Console surface layers (dark-only) */
+  --surface:   #0e0e0e;
+  --surface-2: #161616;
+
+  /* Semantic aliases */
+  --color-green:      #22c55e;
+  --color-amber:      #f59e0b;
+  --color-signal-red: #ef4444;
+  --color-muted:      #6b7280;
+}
+
+/* ── Light mode ──────────────────────────────────────────────── */
+.light {
+  --bg:        #F0F8FF;
+  --border:    #212A37;
+  --highlight: #9200E1;
+  --text:      #000000;
+  --surface:   #e8f1fb;
+  --surface-2: #dde9f7;
+  --color-muted: #4b5563;
+}
+
+/* ── Tailwind v4 theme tokens ────────────────────────────────── */
+@theme inline {
+  /* Map Tailwind utilities → brand variables */
+  --color-bg:         var(--bg);
+  --color-border:     var(--border);
+  --color-highlight:  var(--highlight);
+  --color-text:       var(--text);
+  --color-surface:    var(--surface);
+  --color-surface-2:  var(--surface-2);
+  --color-green:      var(--color-green);
+  --color-amber:      var(--color-amber);
+  --color-signal-red: var(--color-signal-red);
+  --color-muted:      var(--color-muted);
+
+  /* Legacy console aliases (kept for existing console pages) */
+  --color-space:      var(--bg);
+  --color-purple:     var(--highlight);
+
+  /* Fonts */
+  --font-regola: "Regola Pro", system-ui, sans-serif;
+  --font-sans:   var(--font-geist-sans);
+  --font-mono:   var(--font-geist-mono);
+}
+
+/* ── Base ────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  min-height: 100%;
+}
+
+/* ── Light mode — adapt hardcoded Tailwind text utilities ────── */
+/* Scoped to .theme-shell so landing page inline styles are untouched */
+.light .theme-shell .text-white,
+.light .theme-shell .text-gray-300,
+.light .theme-shell .text-gray-400 {
+  color: var(--text);
+}
+.light .theme-shell .text-purple-400 {
+  color: var(--highlight);
+}
+/* Preserve legible text on solid accent/status backgrounds */
+.light .theme-shell .bg-purple .text-white,
+.light .theme-shell .bg-green .text-white,
+.light .theme-shell .bg-amber .text-white {
+  color: #ffffff;
+}
