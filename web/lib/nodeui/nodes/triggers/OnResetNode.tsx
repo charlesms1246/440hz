@@ -1,0 +1,22 @@
+import { memo } from 'react'
+import type { NodeProps } from '@xyflow/react'
+import { BaseNode } from '../BaseNode'
+import type { AppNode } from '@nodeui/types/graph'
+
+const ACCENT = '#f59e0b'
+const EXEC_COLOR = '#6366f1'
+
+export const OnResetNode = memo(function OnResetNode({ id, selected }: NodeProps<AppNode>) {
+  return (
+    <BaseNode
+      id={id}
+      selected={selected}
+      accentHex={ACCENT}
+      categoryLabel="Trigger"
+      label="On Reset"
+      outputs={[{ id: 'exec-out', label: 'Exec Flow', color: EXEC_COLOR }]}
+    >
+      <span style={{ fontSize: 10, color: '#8888aa' }}>env.reset() entry point</span>
+    </BaseNode>
+  )
+})
