@@ -1,0 +1,11 @@
+{
+  "name": "440hz-zg-broker-helper",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Node-side helper invoked by the 440hz Python orchestrator to bridge into @0glabs/0g-serving-broker.",
+  "dependencies": {
+    "@0glabs/0g-serving-broker": "^0.4.0",
+    "ethers": "^6.13.0"
+  }
+}

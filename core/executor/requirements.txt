@@ -1,0 +1,25 @@
+# Core ML
+torch>=2.3.0
+transformers>=4.45.0
+peft>=0.13.0
+accelerate>=0.33.0
+bitsandbytes>=0.43.0
+
+# RL training
+trl>=0.10.0          # used as a fallback / reference; our trainer is hand-rolled
+
+# Federation
+flwr>=1.10.0         # Flower federated client (used after local training)
+safetensors>=0.4.0   # adapter serialization
+
+# HuggingFace fetch
+huggingface_hub>=0.25.0
+
+# Wire / HTTP
+fastapi>=0.110.0
+httpx>=0.27.0
+pydantic>=2.0.0
+uvicorn[standard]>=0.27.0
+
+# Logging
+structlog>=24.0.0
