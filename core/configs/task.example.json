@@ -1,0 +1,50 @@
+{
+  "task_id": "demo-sql-debug-001",
+  "base_model": {
+    "source": "hf",
+    "ref": "Qwen/Qwen2.5-0.5B-Instruct",
+    "quantization": "nf4",
+    "dtype": "bfloat16"
+  },
+  "gym": {
+    "image_ref": "440hz/sample-sql-gym:latest",
+    "port": 8080,
+    "cpu_limit": 2.0,
+    "memory_limit": "4g",
+    "env": {}
+  },
+  "supervisor": {
+    "type": "openai_compatible",
+    "base_url": "http://host.docker.internal:11434/v1",
+    "model": "qwen2.5:7b",
+    "api_key": null,
+    "rubric": "You are evaluating an AI agent's SQL fix. The agent was given a buggy query and a database error message; it submitted a corrected query. Score the correction from 0.0 to 1.0 based on: (1) does it address the specific error mentioned, (2) is it valid SQL syntax, (3) does it preserve the apparent intent of the original query. Respond with ONLY a JSON object: {\"score\": <float 0..1>, \"reason\": \"<one short sentence>\"}.",
+    "scoring_mode": "per_step"
+  },
+  "algorithm": {
+    "name": "grpo",
+    "num_episodes": 50,
+    "learning_rate": 0.00002,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+    "max_new_tokens": 128,
+    "temperature": 0.9,
+    "top_p": 0.95,
+    "kl_coef": 0.04,
+    "batch_size": 1,
+    "grad_accum_steps": 4,
+    "group_size": 4,
+    "save_every": 25
+  },
+  "output": {
+    "destination": "local",
+    "encryption_pubkey": null,
+    "local_path": "/var/440hz/output"
+  },
+  "metadata": {
+    "submitted_by": "demo",
+    "notes": "Local dev task — uses HF base, Ollama supervisor, sample SQL gym."
+  }
+}

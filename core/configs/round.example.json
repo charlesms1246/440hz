@@ -1,0 +1,11 @@
+{
+  "round_id": "demo-sql-debug-round-001",
+  "min_clients": 3,
+  "host": "0.0.0.0",
+  "port": 8080,
+  "lora_config_ref": "/etc/440hz/adapter_config.json",
+  "tokenizer_dir": "/etc/440hz/tokenizer",
+  "output_destination": "local",
+  "local_path": "/var/440hz/output",
+  "encryption_pubkey": null
+}
