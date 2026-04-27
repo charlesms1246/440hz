@@ -1,0 +1,64 @@
+# DinD integration test stack for 440hz gym_sdk.
+#
+# Two-stage pipeline:
+#   1. gym-builder  — uses the host Docker socket to build the gym image
+#                     and save it as a tar into a shared volume.
+#   2. dind-test    — privileged container; starts its own nested dockerd,
+#                     loads the gym tar, then runs the Python integration test.
+#
+# Usage:
+#   docker compose -f docker-compose.dind-test.yml up \
+#     --abort-on-container-exit --exit-code-from dind-test --build
+#
+# Tear down:
+#   docker compose -f docker-compose.dind-test.yml down --volumes
+
+services:
+
+  # -------------------------------------------------------------------------
+  # Stage 1: build the gym image on the host daemon and export it as a tar.
+  # Uses the host Docker socket (bind-mounted) so the build runs on the same
+  # daemon that manages this compose stack — no separate registry needed.
+  # -------------------------------------------------------------------------
+  gym-builder:
+    image: docker:24-cli
+    working_dir: /build
+    volumes:
+      - .:/build:ro                              # core/ as build context (read-only)
+      - /var/run/docker.sock:/var/run/docker.sock  # host Docker socket
+      - gym-images:/gym-images                   # shared volume for the tar
+    command: >
+      sh -c "
+        echo '==> Building 440hz/sample-sql-gym:latest …' &&
+        docker build
+          --tag 440hz/sample-sql-gym:latest
+          --file examples/sample-gym/Dockerfile
+          . &&
+        echo '==> Saving image to /gym-images/sample-sql-gym.tar …' &&
+        docker save 440hz/sample-sql-gym:latest
+          -o /gym-images/sample-sql-gym.tar &&
+        echo '==> gym image saved — size:' &&
+        ls -lh /gym-images/sample-sql-gym.tar
+      "
+
+  # -------------------------------------------------------------------------
+  # Stage 2: privileged DinD test runner.
+  # Starts its own nested dockerd, loads the gym tar, runs test_dind_gym.py.
+  # -------------------------------------------------------------------------
+  dind-test:
+    build:
+      context: .
+      dockerfile: tests/dind/Dockerfile
+    privileged: true          # required: nested dockerd needs kernel capabilities
+    depends_on:
+      gym-builder:
+        condition: service_completed_successfully
+    volumes:
+      - gym-images:/gym-images:ro   # the tar produced by gym-builder
+    # /var/lib/docker is where the inner dockerd stores images + containers.
+    # Using a tmpfs keeps it ephemeral and avoids polluting the host.
+    tmpfs:
+      - /var/lib/docker:exec
+
+volumes:
+  gym-images:

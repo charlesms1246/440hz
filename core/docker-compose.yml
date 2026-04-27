@@ -1,0 +1,73 @@
+# Local dev stack for the 440hz executor.
+#
+# What this gives you:
+#   - The sample SQL gym, built from examples/sample-gym
+#   - The 440hz executor, configured to point at the gym + Ollama as supervisor
+#
+# Prerequisites:
+#   - Docker with GPU support (nvidia-container-toolkit) for the executor
+#   - Ollama running on the host (port 11434) with `qwen2.5:7b` pulled, OR
+#     edit configs/task.example.json to use a different supervisor
+
+services:
+
+  # The Gym — built from the example dir, runs the SQL debugging environment.
+  gym:
+    build:
+      context: .
+      dockerfile: examples/sample-gym/Dockerfile
+    image: 440hz/sample-sql-gym:latest
+    container_name: 440hz-gym
+    networks: [hz_net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  # The Executor — runs the orchestrator. In local mode we skip the nested
+  # DinD entirely and let the orchestrator hit the gym container by name on
+  # the shared compose network. To do this we set RUNTIME=external and the
+  # executor talks to the gym at `http://gym:8080` directly.
+  executor:
+    build:
+      context: .
+      dockerfile: executor/Dockerfile
+    image: 440hz/executor:latest
+    container_name: 440hz-executor
+    depends_on:
+      gym:
+        condition: service_healthy
+    networks: [hz_net]
+    environment:
+      LOG_LEVEL: INFO
+      TASK_CONFIG: /etc/440hz/task.json
+      # In local compose mode the gym is reachable by service name; the
+      # orchestrator's GymContainer wrapper is bypassed via this env var.
+      GYM_OVERRIDE_URL: http://gym:8080
+      # 0G broker creds. Set these in a `.env` file next to this compose file.
+      PRIVATE_KEY: ${PRIVATE_KEY:-}
+      RPC_URL: ${RPC_URL:-https://evmrpc-testnet.0g.ai}
+      # Make the executor able to see Ollama on the host (used as supervisor in
+      # the example config). Adjust per OS — the literal `host.docker.internal`
+      # works on Docker Desktop / WSL2 / recent Linux Docker.
+      OLLAMA_HOST: host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./configs/task.example.json:/etc/440hz/task.json:ro
+      - executor_scratch:/var/440hz
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  hz_net:
+    driver: bridge
+
+volumes:
+  executor_scratch:

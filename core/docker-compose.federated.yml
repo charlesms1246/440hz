@@ -1,0 +1,124 @@
+# Federated multi-node demo for the 440hz training stack.
+#
+# What this brings up:
+#   - 1 sample SQL gym (shared — in production each client would have its own
+#     local gym pointing at private data)
+#   - 1 aggregator (Flower server, waits for 3 clients)
+#   - 3 executors (Flower clients, train locally then submit to aggregator)
+#
+# Each executor uses a different `seed` via its task config and a different
+# scratch volume, simulating "different data slices" even though they share
+# the same gym for demo simplicity. In production each executor's gym container
+# would mount that node's private dataset.
+
+services:
+
+  gym:
+    image: 440hz/sample-sql-gym:latest
+    container_name: 440hz-fed-gym
+    networks: [hz_fed_net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  aggregator:
+    image: 440hz/aggregator:latest
+    container_name: 440hz-fed-aggregator
+    networks: [hz_fed_net]
+    environment:
+      LOG_LEVEL: INFO
+      ROUND_CONFIG: /etc/440hz/round_config.json
+    volumes:
+      - ./configs/round.example.json:/etc/440hz/round_config.json:ro
+      # The aggregator needs the LoRA config + tokenizer to assemble a valid
+      # peft adapter directory. In production these are content-addressed and
+      # fetched from 0G Storage; for local dev we mount placeholders. They
+      # can be empty files for the demo — the strategy will still aggregate.
+      - ./configs/aggregator-templates/adapter_config.json:/etc/440hz/adapter_config.json:ro
+      - ./configs/aggregator-templates/tokenizer/:/etc/440hz/tokenizer/:ro
+      - aggregator_output:/var/440hz/output
+    expose: ["8080"]
+
+  # Three Flower clients. They differ only in their task seeds (via TASK_CONFIG
+  # path) so each one rolls a different episode order — minimal but enough to
+  # show that aggregation actually combines distinct adapters.
+  executor1:
+    image: 440hz/executor:latest
+    container_name: 440hz-fed-executor-1
+    depends_on:
+      gym: { condition: service_healthy }
+      aggregator: { condition: service_started }
+    networks: [hz_fed_net]
+    environment:
+      LOG_LEVEL: INFO
+      TASK_CONFIG: /etc/440hz/task.json
+      GYM_OVERRIDE_URL: http://gym:8080
+      PRIVATE_KEY: ${PRIVATE_KEY:-}
+      RPC_URL: ${RPC_URL:-https://evmrpc-testnet.0g.ai}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./configs/task.federated.example.json:/etc/440hz/task.json:ro
+      - executor1_scratch:/var/440hz
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+
+  executor2:
+    image: 440hz/executor:latest
+    container_name: 440hz-fed-executor-2
+    depends_on:
+      gym: { condition: service_healthy }
+      aggregator: { condition: service_started }
+    networks: [hz_fed_net]
+    environment:
+      LOG_LEVEL: INFO
+      TASK_CONFIG: /etc/440hz/task.json
+      GYM_OVERRIDE_URL: http://gym:8080
+      PRIVATE_KEY: ${PRIVATE_KEY:-}
+      RPC_URL: ${RPC_URL:-https://evmrpc-testnet.0g.ai}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./configs/task.federated.example.json:/etc/440hz/task.json:ro
+      - executor2_scratch:/var/440hz
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+
+  executor3:
+    image: 440hz/executor:latest
+    container_name: 440hz-fed-executor-3
+    depends_on:
+      gym: { condition: service_healthy }
+      aggregator: { condition: service_started }
+    networks: [hz_fed_net]
+    environment:
+      LOG_LEVEL: INFO
+      TASK_CONFIG: /etc/440hz/task.json
+      GYM_OVERRIDE_URL: http://gym:8080
+      PRIVATE_KEY: ${PRIVATE_KEY:-}
+      RPC_URL: ${RPC_URL:-https://evmrpc-testnet.0g.ai}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./configs/task.federated.example.json:/etc/440hz/task.json:ro
+      - executor3_scratch:/var/440hz
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+
+networks:
+  hz_fed_net:
+    driver: bridge
+
+volumes:
+  aggregator_output:
+  executor1_scratch:
+  executor2_scratch:
+  executor3_scratch:
