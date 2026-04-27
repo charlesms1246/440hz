@@ -1,0 +1,13 @@
+# Federated learning framework
+flwr>=1.10.0
+
+# Adapter format
+safetensors>=0.4.0
+torch>=2.3.0  # CPU-only is fine — aggregation is just tensor arithmetic
+
+# For peft adapter inspection (config validation, not training)
+peft>=0.13.0
+
+# Reuse executor.storage for upload — needs the same minimal HTTP/Pydantic stack
+pydantic>=2.0.0
+httpx>=0.27.0
