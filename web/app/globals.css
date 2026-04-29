@@ -19,55 +19,58 @@
 
 /* ── Brand palette — dark mode (default) ─────────────────────── */
 :root {
-  --bg:        #050505;
-  --border:    #d3d3d3;
+  --bg: #050505;
+  --border: #d3d3d3;
   --highlight: #b75fff;
-  --text:      #ffffff;
+  --text: #ffffff;
 
-  /* Console surface layers (dark-only) */
-  --surface:   #0e0e0e;
-  --surface-2: #161616;
-
-  /* Semantic aliases */
-  --color-green:      #22c55e;
-  --color-amber:      #f59e0b;
-  --color-signal-red: #ef4444;
-  --color-muted:      #6b7280;
+  /* Node UI (Gym Builder) */
+  --nodeui-canvas: #0d0d1a;
+  --nodeui-surface: #111122;
+  --nodeui-node: #1a1a2e;
+  --nodeui-node-hover: #1e1e36;
+  --nodeui-border-strong: #2a2a3e;
+  --nodeui-border-subtle: #1e1e3a;
+  --nodeui-text: #f0f0ff;
+  --nodeui-muted: #8888aa;
+  --nodeui-dim: #4a4a6a;
 }
 
 /* ── Light mode ──────────────────────────────────────────────── */
 .light {
-  --bg:        #F0F8FF;
-  --border:    #212A37;
-  --highlight: #9200E1;
-  --text:      #000000;
-  --surface:   #e8f1fb;
-  --surface-2: #dde9f7;
-  --color-muted: #4b5563;
+  --bg: #f0f8ff;
+  --border: #212a37;
+  --highlight: #9200e1;
+  --text: #000000;
+
+  /* Node UI (Gym Builder) — light variants */
+  --nodeui-canvas: #eeeef6;
+  --nodeui-surface: #f4f4fc;
+  --nodeui-node: #ffffff;
+  --nodeui-node-hover: #f0f0f8;
+  --nodeui-border-strong: #d0d0e8;
+  --nodeui-border-subtle: #e4e4f0;
+  --nodeui-text: #1a1a2e;
+  --nodeui-muted: #5555aa;
+  --nodeui-dim: #8888bb;
 }
 
 /* ── Tailwind v4 theme tokens ────────────────────────────────── */
 @theme inline {
   /* Map Tailwind utilities → brand variables */
-  --color-bg:         var(--bg);
-  --color-border:     var(--border);
-  --color-highlight:  var(--highlight);
-  --color-text:       var(--text);
-  --color-surface:    var(--surface);
-  --color-surface-2:  var(--surface-2);
-  --color-green:      var(--color-green);
-  --color-amber:      var(--color-amber);
-  --color-signal-red: var(--color-signal-red);
-  --color-muted:      var(--color-muted);
+  --color-bg: var(--bg);
+  --color-border: var(--border);
+  --color-highlight: var(--highlight);
+  --color-text: var(--text);
 
   /* Legacy console aliases (kept for existing console pages) */
-  --color-space:      var(--bg);
-  --color-purple:     var(--highlight);
+  --color-space: var(--bg);
+  --color-purple: var(--highlight);
 
   /* Fonts */
   --font-regola: "Regola Pro", system-ui, sans-serif;
-  --font-sans:   var(--font-geist-sans);
-  --font-mono:   var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 /* ── Base ────────────────────────────────────────────────────── */
@@ -85,7 +88,6 @@ body {
   min-height: 100%;
 }
 
-
 /* ── Light mode — adapt hardcoded Tailwind text utilities ────── */
 /* Scoped to .theme-shell so landing page inline styles are untouched */
 .light .theme-shell .text-white,
@@ -101,4 +103,54 @@ body {
 .light .theme-shell .bg-green .text-white,
 .light .theme-shell .bg-amber .text-white {
   color: #ffffff;
+}
+
+/* ── React Flow overrides ────────────────────────────────────── */
+/*
+ * Override xyflow's own CSS custom properties — background-color !important
+ * doesn't reach into the SVG-based Background component, but overriding
+ * --xy-background-color does because Background uses:
+ *   background-color: var(--xy-background-color-props, var(--xy-background-color, ...))
+ */
+.react-flow {
+  --xy-background-color: var(--nodeui-canvas);
+  --xy-minimap-background-color-default: var(--nodeui-surface);
+  --xy-minimap-mask-background-color-default: rgba(0, 0, 0, 0.4);
+  --xy-controls-button-background-color-default: var(--nodeui-node);
+  --xy-controls-button-background-color-hover-default: var(--nodeui-node-hover);
+  --xy-controls-button-border-color-default: var(--nodeui-border-strong);
+  background-color: var(--nodeui-canvas) !important;
+}
+
+.react-flow__background {
+  background-color: var(--nodeui-canvas) !important;
+}
+
+/* MiniMap */
+.react-flow__minimap {
+  background-color: var(--nodeui-surface) !important;
+  border: 1px solid var(--nodeui-border-subtle) !important;
+}
+
+/* Controls */
+.react-flow__controls {
+  background-color: var(--nodeui-node) !important;
+  border: 1px solid var(--nodeui-border-strong) !important;
+  border-radius: 8px !important;
+}
+
+.react-flow__controls button {
+  background-color: var(--nodeui-node) !important;
+  color: var(--nodeui-text) !important;
+  border: 1px solid var(--nodeui-border-strong) !important;
+}
+
+.react-flow__controls button:hover {
+  background-color: var(--nodeui-node-hover) !important;
+  opacity: 1 !important;
+}
+
+/* Nodes default — actual node backgrounds are set inline by BaseNode */
+.react-flow__node {
+  background-color: transparent !important;
 }
