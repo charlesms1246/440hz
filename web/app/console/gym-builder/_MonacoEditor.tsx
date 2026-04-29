@@ -19,11 +19,11 @@ function fileLanguage(name: string): string {
 }
 
 function fileIcon(name: string): string {
-  if (name.endsWith('.py')) return '🐍'
-  if (name.endsWith('.yml') || name.endsWith('.yaml')) return '⚙️'
+  if (name.endsWith('.py')) return 'ⓟ'
+  if (name.endsWith('.yml') || name.endsWith('.yaml')) return '⚙'
   if (name.endsWith('.json')) return '{}'
-  if (name.endsWith('.md')) return '📄'
-  return '📝'
+  if (name.endsWith('.md')) return '🗎'
+  return '//'
 }
 
 // ── 440hz API completions ──────────────────────────────────────
