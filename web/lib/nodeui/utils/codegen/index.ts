@@ -49,7 +49,7 @@ export function generatePython(nodes: AppNode[], edges: AppEdge[], projectName: 
     return `_HEADERS_${safeId} = {${headerDict}}`
   }).join('\n')
 
-  return classTemplate({
+  const code = classTemplate({
     className: toClassName(projectName),
     actionSpaceCode,
     obsSpaceCode,
@@ -57,4 +57,12 @@ export function generatePython(nodes: AppNode[], edges: AppEdge[], projectName: 
     stepBody:  stepBody  || '        pass',
     httpsHeaders,
   })
+
+  // Embed graph JSON so the reverse parser can reconstruct perfectly (Unicode-safe)
+  const json = JSON.stringify({ nodes, edges, projectName })
+  const bytes = new TextEncoder().encode(json)
+  let binary = ''
+  bytes.forEach(b => (binary += String.fromCharCode(b)))
+  const meta = btoa(binary)
+  return `# @440hz-graph: ${meta}\n${code}`
 }
