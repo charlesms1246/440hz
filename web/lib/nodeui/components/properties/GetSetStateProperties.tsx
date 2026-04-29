@@ -42,7 +42,7 @@ export function GetSetStateProperties({ nodeId }: { nodeId: string }) {
       <Field label="State Variables">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {d.stateEntries.map((e, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, background: '#0d0d1a', borderRadius: 6, padding: 8, border: '1px solid #1e1e3a' }}>
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, background: 'var(--nodeui-canvas)', borderRadius: 6, padding: 8, border: '1px solid var(--nodeui-border-subtle)' }}>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <StyledInput value={e.key} onChange={(v) => updateEntry(i, { key: v })} placeholder="variable_name" />
                 <RemoveButton onClick={() => removeEntry(i)} />

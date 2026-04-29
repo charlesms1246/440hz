@@ -18,12 +18,12 @@ export function RouterSwitchProperties({ nodeId }: { nodeId: string }) {
 
   return (
     <Field label="Conditions">
-      <div style={{ fontSize: 10, color: '#8888aa', marginBottom: 8 }}>
+      <div style={{ fontSize: 10, color: 'var(--nodeui-muted)', marginBottom: 8 }}>
         Use Python expressions. Available vars: <code style={{ color: '#facc15' }}>action</code>, <code style={{ color: '#facc15' }}>state</code>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {d.conditions.map((c) => (
-          <div key={c.id} style={{ background: '#0d0d1a', borderRadius: 6, padding: 8, border: '1px solid #1e1e3a' }}>
+          <div key={c.id} style={{ background: 'var(--nodeui-canvas)', borderRadius: 6, padding: 8, border: '1px solid var(--nodeui-border-subtle)' }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
               <StyledInput value={c.label} onChange={(v) => updateCond(c.id, 'label', v)} placeholder="Path A" />
               {d.conditions.length > 1 && <RemoveButton onClick={() => removeCond(nodeId, c.id)} />}

@@ -28,7 +28,7 @@ function getHandleStyle(index: number, total: number, color: string): CSSPropert
     width: 10,
     height: 10,
     background: color,
-    border: '2px solid #1a1a2e',
+    border: '2px solid var(--nodeui-node)',
     borderRadius: '50%',
     cursor: 'crosshair',
   }
@@ -53,9 +53,9 @@ export const BaseNode = memo(function BaseNode({
       onClick={() => setSelectedNode(id)}
       style={{
         width: wide ? 288 : 240,
-        background: '#1a1a2e',
+        background: 'var(--nodeui-node)',
         borderRadius: 12,
-        border: selected ? `1px solid ${accentHex}66` : '1px solid #2a2a3e',
+        border: selected ? `1px solid ${accentHex}66` : '1px solid var(--nodeui-border-strong)',
         boxShadow: selected
           ? `0 0 0 2px ${accentHex}33, 0 4px 24px rgba(0,0,0,0.5)`
           : '0 4px 24px rgba(0,0,0,0.4)',
@@ -67,7 +67,7 @@ export const BaseNode = memo(function BaseNode({
       <div
         style={{
           background: `linear-gradient(to right, ${accentHex}22, transparent)`,
-          borderBottom: '1px solid #2a2a3e',
+          borderBottom: '1px solid var(--nodeui-border-strong)',
           borderRadius: '12px 12px 0 0',
           padding: '8px 12px',
           display: 'flex',
@@ -80,14 +80,14 @@ export const BaseNode = memo(function BaseNode({
         <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: accentHex }}>
           {categoryLabel}
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: '#f0f0ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}>
+        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--nodeui-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}>
           {label}
         </span>
         <button
           onClick={(e) => { e.stopPropagation(); removeNode(id) }}
-          style={{ color: '#4a4a6a', background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 1, flexShrink: 0 }}
+          style={{ color: 'var(--nodeui-dim)', background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 1, flexShrink: 0 }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#f43f5e' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#4a4a6a' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)' }}
         >
           <X size={12} />
         </button>
@@ -113,7 +113,7 @@ export const BaseNode = memo(function BaseNode({
             top: `${inputs.length === 1 ? 50 : 20 + (60 / (inputs.length - 1)) * i}%`,
             transform: 'translate(-100%, -50%)',
             fontSize: 9,
-            color: '#8888aa',
+            color: 'var(--nodeui-muted)',
             whiteSpace: 'nowrap',
             pointerEvents: 'none',
           }}>
@@ -137,7 +137,7 @@ export const BaseNode = memo(function BaseNode({
             top: `${outputs.length === 1 ? 50 : 20 + (60 / (outputs.length - 1)) * i}%`,
             transform: 'translate(100%, -50%)',
             fontSize: 9,
-            color: '#8888aa',
+            color: 'var(--nodeui-muted)',
             whiteSpace: 'nowrap',
             pointerEvents: 'none',
           }}>

@@ -16,7 +16,7 @@ export const OnResetNode = memo(function OnResetNode({ id, selected }: NodeProps
       label="On Reset"
       outputs={[{ id: 'exec-out', label: 'Exec Flow', color: EXEC_COLOR }]}
     >
-      <span style={{ fontSize: 10, color: '#8888aa' }}>env.reset() entry point</span>
+      <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>env.reset() entry point</span>
     </BaseNode>
   )
 })

@@ -23,7 +23,7 @@ export const ConstraintNode = memo(function ConstraintNode({ id, selected, data 
         { id: 'violate-out', label: 'Violate', color: '#f43f5e' },
       ]}
     >
-      <span style={{ fontSize: 10, color: '#8888aa' }}>{rule}</span>
+      <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>{rule}</span>
     </BaseNode>
   )
 })

@@ -16,7 +16,7 @@ export function DataExtractorProperties({ nodeId }: { nodeId: string }) {
     <Field label="Extractions">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {d.extractions.map((e, i) => (
-          <div key={i} style={{ background: '#0d0d1a', borderRadius: 6, padding: 8, border: '1px solid #1e1e3a' }}>
+          <div key={i} style={{ background: 'var(--nodeui-canvas)', borderRadius: 6, padding: 8, border: '1px solid var(--nodeui-border-subtle)' }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
               <StyledInput value={e.key} onChange={(v) => updateEntry(i, { key: v })} placeholder="variable_name" />
               <RemoveButton onClick={() => update(nodeId, { extractions: d.extractions.filter((_, j) => j !== i) })} />

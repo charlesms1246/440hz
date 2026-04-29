@@ -18,7 +18,7 @@ export const PersonaNode = memo(function PersonaNode({ id, selected, data }: Nod
       label={d.label}
       outputs={[{ id: 'prompt-out', label: 'Prompt String', color: '#8b5cf6' }]}
     >
-      <div style={{ fontSize: 10, color: '#8888aa', fontStyle: d.systemPrompt ? 'normal' : 'italic' }}>
+      <div style={{ fontSize: 10, color: 'var(--nodeui-muted)', fontStyle: d.systemPrompt ? 'normal' : 'italic' }}>
         {preview}
       </div>
     </BaseNode>

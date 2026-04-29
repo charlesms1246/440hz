@@ -22,7 +22,7 @@ export const ReturnStepNode = memo(function ReturnStepNode({ id, selected }: Nod
         { id: 'info-in',       label: 'Info (dict)',      color: '#8b5cf6' },
       ]}
     >
-      <span style={{ fontSize: 10, color: '#8888aa' }}>→ returns (obs, rew, term, trunc, info)</span>
+      <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>→ returns (obs, rew, term, trunc, info)</span>
     </BaseNode>
   )
 })

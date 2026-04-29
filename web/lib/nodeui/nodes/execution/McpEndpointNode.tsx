@@ -24,7 +24,7 @@ export const McpEndpointNode = memo(function McpEndpointNode({ id, selected, dat
       ]}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={{ fontSize: 10, color: '#8888aa' }}>{url}</span>
+        <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>{url}</span>
         {d.toolName && <span style={{ fontSize: 10, color: '#14b8a6' }}>tool: {d.toolName}</span>}
       </div>
     </BaseNode>

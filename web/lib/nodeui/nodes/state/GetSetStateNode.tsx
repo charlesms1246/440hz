@@ -25,7 +25,7 @@ export const GetSetStateNode = memo(function GetSetStateNode({ id, selected, dat
         <span style={{ fontSize: 10, padding: '2px 6px', background: '#14b8a622', color: '#14b8a6', borderRadius: 4, fontWeight: 700 }}>
           {opLabel}
         </span>
-        <span style={{ fontSize: 10, color: '#8888aa' }}>{firstKey}{d.stateEntries.length > 1 ? ` +${d.stateEntries.length - 1}` : ''}</span>
+        <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>{firstKey}{d.stateEntries.length > 1 ? ` +${d.stateEntries.length - 1}` : ''}</span>
       </div>
     </BaseNode>
   )

@@ -31,7 +31,7 @@ export const HttpsRequestNode = memo(function HttpsRequestNode({ id, selected, d
         <span style={{ fontSize: 10, padding: '2px 6px', background: `${METHOD_COLORS[d.method]}22`, color: METHOD_COLORS[d.method], borderRadius: 4, fontWeight: 700 }}>
           {d.method}
         </span>
-        <span style={{ fontSize: 10, color: '#8888aa' }}>{url}</span>
+        <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>{url}</span>
       </div>
     </BaseNode>
   )

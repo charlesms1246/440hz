@@ -24,7 +24,7 @@ export const StaticRewardNode = memo(function StaticRewardNode({ id, selected, d
         <span style={{ fontSize: 20, fontWeight: 700, color: isPositive ? '#10b981' : '#f43f5e' }}>
           {isPositive ? '+' : ''}{d.reward}
         </span>
-        {d.description && <span style={{ fontSize: 10, color: '#8888aa' }}>{d.description}</span>}
+        {d.description && <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>{d.description}</span>}
       </div>
     </BaseNode>
   )

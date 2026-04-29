@@ -28,7 +28,7 @@ export const RlaifOverseerNode = memo(function RlaifOverseerNode({ id, selected,
         <span style={{ fontSize: 10, padding: '2px 8px', background: '#f43f5e22', color: '#f43f5e', borderRadius: 4, fontWeight: 700 }}>
           {d.model}
         </span>
-        <span style={{ fontSize: 10, color: '#8888aa' }}>{d.minScore}–{d.maxScore} pts</span>
+        <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>{d.minScore}–{d.maxScore} pts</span>
       </div>
     </BaseNode>
   )

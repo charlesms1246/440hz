@@ -22,7 +22,7 @@ export const DataExtractorNode = memo(function DataExtractorNode({ id, selected,
     >
       <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#facc15' }}>
         {first ? `${first.key}: ${first.jsonPath}` : 'No extractions'}
-        {d.extractions.length > 1 && <span style={{ color: '#8888aa' }}> +{d.extractions.length - 1}</span>}
+        {d.extractions.length > 1 && <span style={{ color: 'var(--nodeui-muted)' }}> +{d.extractions.length - 1}</span>}
       </span>
     </BaseNode>
   )

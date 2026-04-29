@@ -16,7 +16,7 @@ export const OnStepNode = memo(function OnStepNode({ id, selected }: NodeProps<A
       label="On Step"
       outputs={[{ id: 'exec-out', label: 'Exec + Action', color: EXEC_COLOR }]}
     >
-      <span style={{ fontSize: 10, color: '#8888aa' }}>env.step(action) entry point</span>
+      <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>env.step(action) entry point</span>
     </BaseNode>
   )
 })

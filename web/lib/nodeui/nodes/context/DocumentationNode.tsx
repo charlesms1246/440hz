@@ -20,7 +20,7 @@ export const DocumentationNode = memo(function DocumentationNode({ id, selected,
       inputs={[{ id: 'exec-in', label: 'Exec (opt.)', color: EXEC_COLOR }]}
       outputs={[{ id: 'context-out', label: 'Context String', color: '#8b5cf6' }]}
     >
-      <div style={{ fontSize: 10, color: '#8888aa', fontStyle: d.content ? 'normal' : 'italic' }}>
+      <div style={{ fontSize: 10, color: 'var(--nodeui-muted)', fontStyle: d.content ? 'normal' : 'italic' }}>
         {preview}
       </div>
     </BaseNode>

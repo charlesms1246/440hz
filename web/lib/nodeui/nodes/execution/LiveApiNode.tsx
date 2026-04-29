@@ -30,7 +30,7 @@ export const LiveApiNode = memo(function LiveApiNode({ id, selected, data }: Nod
         <span style={{ fontSize: 10, padding: '2px 6px', background: '#10b98122', color: '#10b981', borderRadius: 4, fontWeight: 700 }}>
           {INTEGRATION_LABELS[d.integration] ?? d.integration}
         </span>
-        <span style={{ fontSize: 10, color: '#8888aa' }}>{d.operation}</span>
+        <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>{d.operation}</span>
       </div>
     </BaseNode>
   )
