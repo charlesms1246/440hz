@@ -49,8 +49,8 @@ export function PropertiesPanel() {
     return (
       <div style={{
         width: 40, flexShrink: 0,
-        background: '#111122',
-        borderLeft: '1px solid #1e1e3a',
+        background: 'var(--nodeui-surface)',
+        borderLeft: '1px solid var(--nodeui-border-subtle)',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         paddingTop: 6, gap: 2,
       }}>
@@ -63,11 +63,11 @@ export function PropertiesPanel() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: node ? '#6366f122' : 'none',
             border: node ? '1px solid #6366f144' : '1px solid transparent',
-            color: node ? '#6366f1' : '#4a4a6a',
+            color: node ? '#6366f1' : 'var(--nodeui-dim)',
             cursor: 'pointer',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#8888aa' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = node ? '#6366f1' : '#4a4a6a' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-muted)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = node ? '#6366f1' : 'var(--nodeui-dim)' }}
         >
           <SlidersHorizontal size={14} />
         </button>
@@ -80,11 +80,11 @@ export function PropertiesPanel() {
           style={{
             width: 32, height: 28, borderRadius: 7, marginBottom: 8,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'none', border: '1px solid #2a2a3e',
-            color: '#4a4a6a', cursor: 'pointer',
+            background: 'none', border: '1px solid var(--nodeui-border-strong)',
+            color: 'var(--nodeui-dim)', cursor: 'pointer',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#f0f0ff'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#4a4a6a' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#4a4a6a'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a3e' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-text)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-dim)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-border-strong)' }}
         >
           <ChevronLeft size={13} />
         </button>
@@ -96,20 +96,20 @@ export function PropertiesPanel() {
   if (!node) {
     return (
       <div style={{
-        width, flexShrink: 0, background: '#111122',
-        borderLeft: '1px solid #1e1e3a',
+        width, flexShrink: 0, background: 'var(--nodeui-surface)',
+        borderLeft: '1px solid var(--nodeui-border-subtle)',
         display: 'flex', flexDirection: 'column',
         position: 'relative',
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', padding: '8px 8px 8px 14px', borderBottom: '1px solid #1e1e3a', flexShrink: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#8888aa', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '8px 8px 8px 14px', borderBottom: '1px solid var(--nodeui-border-subtle)', flexShrink: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--nodeui-muted)', flex: 1 }}>
             Properties
           </span>
           <CollapseButton onClick={() => setCollapsed(true)} />
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: 12, color: '#4a4a6a', textAlign: 'center', padding: 16 }}>
+          <span style={{ fontSize: 12, color: 'var(--nodeui-dim)', textAlign: 'center', padding: 16 }}>
             Select a node to configure it
           </span>
         </div>
@@ -125,14 +125,14 @@ export function PropertiesPanel() {
 
   return (
     <div style={{
-      width, flexShrink: 0, background: '#111122',
-      borderLeft: '1px solid #1e1e3a',
+      width, flexShrink: 0, background: 'var(--nodeui-surface)',
+      borderLeft: '1px solid var(--nodeui-border-subtle)',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden', position: 'relative',
     }}>
       {/* Header */}
       <div style={{
-        padding: '10px 8px 10px 14px', borderBottom: '1px solid #1e1e3a',
+        padding: '10px 8px 10px 14px', borderBottom: '1px solid var(--nodeui-border-subtle)',
         background: `linear-gradient(to right, ${entry.accentHex}11, transparent)`,
         flexShrink: 0,
       }}>
@@ -148,17 +148,17 @@ export function PropertiesPanel() {
           onChange={(e) => update(node.id, { label: e.target.value })}
           style={{
             width: '100%', background: 'none', border: 'none', outline: 'none',
-            fontSize: 14, fontWeight: 600, color: '#f0f0ff', fontFamily: 'inherit',
+            fontSize: 14, fontWeight: 600, color: 'var(--nodeui-text)', fontFamily: 'inherit',
             boxSizing: 'border-box',
           }}
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 10, color: '#8888aa' }}>{entry.label}</span>
+          <span style={{ fontSize: 10, color: 'var(--nodeui-muted)' }}>{entry.label}</span>
           <button
             onClick={() => remove(node.id)}
-            style={{ fontSize: 11, color: '#4a4a6a', background: 'none', border: '1px solid #2a2a3e', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
+            style={{ fontSize: 11, color: 'var(--nodeui-dim)', background: 'none', border: '1px solid var(--nodeui-border-strong)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#f43f5e'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#f43f5e33' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#4a4a6a'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a3e' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-border-strong)' }}
           >
             Delete
           </button>
@@ -169,7 +169,7 @@ export function PropertiesPanel() {
       <div style={{ flex: 1, overflowY: 'auto', padding: 14 }}>
         {PropertiesComponent
           ? <PropertiesComponent nodeId={node.id} />
-          : <span style={{ fontSize: 11, color: '#4a4a6a' }}>No configuration needed.</span>}
+          : <span style={{ fontSize: 11, color: 'var(--nodeui-dim)' }}>No configuration needed.</span>}
       </div>
 
       <ResizeHandle onMouseDown={onMouseDown} />
@@ -186,10 +186,10 @@ function CollapseButton({ onClick }: { onClick: () => void }) {
         width: 24, height: 24, borderRadius: 5, flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'none', border: '1px solid transparent',
-        color: '#4a4a6a', cursor: 'pointer',
+        color: 'var(--nodeui-dim)', cursor: 'pointer',
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#f0f0ff'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a3e' }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#4a4a6a'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent' }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-text)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-border-strong)' }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent' }}
     >
       <ChevronRight size={13} />
     </button>

@@ -38,7 +38,7 @@ export function SidebarCategory({ group, query }: Props) {
           paddingLeft: 8,
         }}
       >
-        {open ? <ChevronDown size={12} color="#8888aa" /> : <ChevronRight size={12} color="#8888aa" />}
+        {open ? <ChevronDown size={12} color="var(--nodeui-muted)" /> : <ChevronRight size={12} color="var(--nodeui-muted)" />}
         <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: group.accentHex }}>
           {group.label}
         </span>

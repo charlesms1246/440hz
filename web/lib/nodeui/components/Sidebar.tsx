@@ -28,8 +28,8 @@ export function Sidebar() {
     return (
       <div style={{
         width: 40, flexShrink: 0,
-        background: '#111122',
-        borderRight: '1px solid #1e1e3a',
+        background: 'var(--nodeui-surface)',
+        borderRight: '1px solid var(--nodeui-border-subtle)',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         paddingTop: 6, gap: 2,
       }}>
@@ -45,11 +45,11 @@ export function Sidebar() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: active ? '#6366f122' : 'none',
                 border: active ? '1px solid #6366f144' : '1px solid transparent',
-                color: active ? '#6366f1' : '#4a4a6a',
+                color: active ? '#6366f1' : 'var(--nodeui-dim)',
                 cursor: 'pointer',
               }}
-              onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = '#8888aa' }}
-              onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = '#4a4a6a' }}
+              onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-muted)' }}
+              onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)' }}
             >
               <Icon size={14} />
             </button>
@@ -65,10 +65,10 @@ export function Sidebar() {
             width: 32, height: 28, borderRadius: 7, marginBottom: 8,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'none', border: '1px solid #2a2a3e',
-            color: '#4a4a6a', cursor: 'pointer',
+            color: 'var(--nodeui-dim)', cursor: 'pointer',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#f0f0ff'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#4a4a6a' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#4a4a6a'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a3e' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-text)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-dim)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-border-strong)' }}
         >
           <ChevronRight size={13} />
         </button>
@@ -81,15 +81,15 @@ export function Sidebar() {
     <div style={{
       width,
       flexShrink: 0,
-      background: '#111122',
-      borderRight: '1px solid #1e1e3a',
+      background: 'var(--nodeui-surface)',
+      borderRight: '1px solid var(--nodeui-border-subtle)',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
       position: 'relative',
     }}>
       {/* Tab header */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #1e1e3a', flexShrink: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--nodeui-border-subtle)', flexShrink: 0 }}>
         {TABS.map(({ id, label, Icon }) => {
           const active = mode === id
           return (
@@ -101,14 +101,14 @@ export function Sidebar() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                 padding: '9px 0',
                 fontSize: 11, fontWeight: active ? 700 : 500,
-                color: active ? '#f0f0ff' : '#4a4a6a',
+                color: active ? 'var(--nodeui-text)' : 'var(--nodeui-dim)',
                 background: 'none', border: 'none',
                 borderBottom: active ? '2px solid #6366f1' : '2px solid transparent',
                 cursor: 'pointer', fontFamily: 'inherit',
                 transition: 'color 0.15s, border-color 0.15s',
               }}
-              onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = '#8888aa' }}
-              onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = '#4a4a6a' }}
+              onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-muted)' }}
+              onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)' }}
             >
               <Icon size={11} />
               {label}
@@ -124,10 +124,10 @@ export function Sidebar() {
             width: 32, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'none', border: 'none', borderBottom: '2px solid transparent',
-            color: '#4a4a6a', cursor: 'pointer',
+            color: 'var(--nodeui-dim)', cursor: 'pointer',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#f0f0ff' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#4a4a6a' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-text)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)' }}
         >
           <ChevronLeft size={13} />
         </button>
@@ -137,15 +137,15 @@ export function Sidebar() {
       {mode === 'palette' && (
         <>
           <div style={{ padding: '8px 12px', position: 'relative', flexShrink: 0 }}>
-            <Search size={12} style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', color: '#4a4a6a' }} />
+            <Search size={12} style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', color: 'var(--nodeui-dim)' }} />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search nodes…"
               style={{
-                width: '100%', background: '#0d0d1a', border: '1px solid #2a2a3e',
+                width: '100%', background: 'var(--nodeui-canvas)', border: '1px solid var(--nodeui-border-strong)',
                 borderRadius: 6, padding: '5px 8px 5px 24px', fontSize: 11,
-                color: '#f0f0ff', outline: 'none', boxSizing: 'border-box',
+                color: 'var(--nodeui-text)', outline: 'none', boxSizing: 'border-box',
               }}
             />
           </div>

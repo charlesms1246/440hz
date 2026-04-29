@@ -13,6 +13,7 @@ import {
 import { useGraphStore } from '@nodeui/store/graphStore'
 import { REACT_FLOW_NODE_TYPES, NODE_REGISTRY } from '@nodeui/nodes/registry'
 import { NodeType } from '@nodeui/types/nodes'
+import { useThemeStore } from '@/lib/themeStore'
 
 export function Canvas() {
   const {
@@ -23,6 +24,8 @@ export function Canvas() {
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition, fitView } = useReactFlow()
+  const theme = useThemeStore(s => s.theme)
+  const isDark = theme === 'dark'
 
   const nodeTypes = useMemo(() => REACT_FLOW_NODE_TYPES, [])
 
@@ -45,7 +48,7 @@ export function Canvas() {
   }, [screenToFlowPosition, addNode])
 
   return (
-    <div ref={reactFlowWrapper} style={{ flex: 1, height: '100%', background: '#0d0d1a' }}>
+    <div ref={reactFlowWrapper} style={{ flex: 1, height: '100%', background: 'var(--nodeui-canvas)' }}>
       <ReactFlow
         nodes={nodes as Parameters<typeof ReactFlow>[0]['nodes']}
         edges={edges}
@@ -64,25 +67,26 @@ export function Canvas() {
         maxZoom={2}
         defaultEdgeOptions={{
           animated: true,
-          style: { stroke: '#4a4a6a', strokeWidth: 2 },
+          style: { stroke: 'var(--nodeui-dim)', strokeWidth: 2 },
         }}
         connectionLineStyle={{ stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '5 5' }}
         proOptions={{ hideAttribution: true }}
-        style={{ background: '#0d0d1a' }}
+        colorMode={isDark ? 'dark' : 'light'}
+        style={{ background: 'var(--nodeui-canvas)' }}
       >
         <Background
-          color="#1e1e3a"
+          color={isDark ? '#1e1e3a' : '#c8c8e0'}
           variant={BackgroundVariant.Dots}
           gap={24}
           size={1}
         />
         <MiniMap
-          style={{ background: '#111122', border: '1px solid #1e1e3a' }}
-          nodeColor={(n) => NODE_REGISTRY[n.type as NodeType]?.accentHex ?? '#8888aa'}
-          maskColor="rgba(0,0,0,0.5)"
+          style={{ background: 'var(--nodeui-surface)', border: '1px solid var(--nodeui-border-subtle)' }}
+          nodeColor={(n) => NODE_REGISTRY[n.type as NodeType]?.accentHex ?? 'var(--nodeui-muted)'}
+          maskColor={isDark ? 'rgba(0,0,0,0.5)' : 'rgba(200,200,220,0.4)'}
         />
         <Controls
-          style={{ background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 8 }}
+          style={{ background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)', borderRadius: 8 }}
         />
       </ReactFlow>
     </div>

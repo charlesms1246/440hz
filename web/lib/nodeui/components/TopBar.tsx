@@ -39,8 +39,8 @@ export function TopBar() {
   return (
     <>
       <div style={{
-        height: 48, flexShrink: 0, background: '#111122',
-        borderBottom: '1px solid #1e1e3a',
+        height: 48, flexShrink: 0, background: 'var(--nodeui-surface)',
+        borderBottom: '1px solid var(--nodeui-border-subtle)',
         display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12,
       }}>
         {/* Logo */}
@@ -49,7 +49,7 @@ export function TopBar() {
           <span style={{ fontSize: 11, padding: '1px 5px', background: '#f59e0b22', color: '#f59e0b', borderRadius: 3, fontWeight: 700, letterSpacing: '0.05em' }}>hz</span>
         </div>
 
-        <div style={{ width: 1, height: 20, background: '#2a2a3e' }} />
+        <div style={{ width: 1, height: 20, background: 'var(--nodeui-border-strong)' }} />
 
         {/* Project Name */}
         <input
@@ -57,7 +57,7 @@ export function TopBar() {
           onChange={(e) => setProjectName(e.target.value)}
           style={{
             background: 'none', border: 'none', outline: 'none',
-            fontSize: 13, fontWeight: 500, color: '#f0f0ff',
+            fontSize: 13, fontWeight: 500, color: 'var(--nodeui-text)',
             fontFamily: 'inherit', width: 240,
           }}
         />
@@ -69,12 +69,12 @@ export function TopBar() {
           onClick={handleClear}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 12, color: '#8888aa',
-            background: 'none', border: '1px solid #2a2a3e', borderRadius: 6,
+            fontSize: 12, color: 'var(--nodeui-muted)',
+            background: 'none', border: '1px solid var(--nodeui-border-strong)', borderRadius: 6,
             padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit',
           }}
           onMouseEnter={(e) => { const b = e.currentTarget as HTMLButtonElement; b.style.color = '#f43f5e'; b.style.borderColor = '#f43f5e33' }}
-          onMouseLeave={(e) => { const b = e.currentTarget as HTMLButtonElement; b.style.color = '#8888aa'; b.style.borderColor = '#2a2a3e' }}
+          onMouseLeave={(e) => { const b = e.currentTarget as HTMLButtonElement; b.style.color = 'var(--nodeui-muted)'; b.style.borderColor = 'var(--nodeui-border-strong)' }}
         >
           <Trash2 size={13} />
           Clear
@@ -84,7 +84,7 @@ export function TopBar() {
           onClick={handleExport}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 12, color: '#0d0d1a',
+            fontSize: 12, color: 'var(--nodeui-canvas)',
             background: '#10b981', border: 'none', borderRadius: 6,
             padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
           }}
@@ -104,10 +104,10 @@ export function TopBar() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }} onClick={() => setDialogOpen(false)}>
           <div style={{
-            background: '#1a1a2e', borderRadius: 12, border: '1px solid #2a2a3e',
+            background: 'var(--nodeui-node)', borderRadius: 12, border: '1px solid var(--nodeui-border-strong)',
             padding: 24, width: 420, maxHeight: '80vh', overflowY: 'auto',
           }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#f0f0ff' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: 'var(--nodeui-text)' }}>
               Export Validation
             </h3>
 
@@ -128,14 +128,14 @@ export function TopBar() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setDialogOpen(false)}
-                style={{ fontSize: 12, color: '#8888aa', background: 'none', border: '1px solid #2a2a3e', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit' }}
+                style={{ fontSize: 12, color: 'var(--nodeui-muted)', background: 'none', border: '1px solid var(--nodeui-border-strong)', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit' }}
               >
                 Cancel
               </button>
               {!dialogErrors.some((e) => e.severity === 'error') && (
                 <button
                   onClick={doExport}
-                  style={{ fontSize: 12, color: '#0d0d1a', background: '#10b981', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                  style={{ fontSize: 12, color: 'var(--nodeui-canvas)', background: '#10b981', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
                 >
                   Export Anyway
                 </button>

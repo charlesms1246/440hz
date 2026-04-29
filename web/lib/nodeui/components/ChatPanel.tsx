@@ -4,7 +4,7 @@ import { useGraphStore } from '@nodeui/store/graphStore'
 import { AGENT_SYSTEM_PROMPT, CREATE_GRAPH_TOOL } from '@nodeui/utils/agentSystemPrompt'
 import type { AppNode, AppEdge } from '@nodeui/types/graph'
 
-type Provider = 'groq' | 'openrouter'
+type Provider = '0g' | 'openrouter' | 'groq'
 
 interface OaiMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -14,24 +14,30 @@ interface OaiMessage {
   name?: string
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   isGraphBuild?: boolean
 }
 
 const PROVIDER_CONFIG: Record<Provider, { label: string; url: string; defaultModel: string; keyPlaceholder: string }> = {
-  groq: {
-    label: 'Groq',
-    url: 'https://api.groq.com/openai/v1/chat/completions',
-    defaultModel: 'llama-3.3-70b-versatile',
-    keyPlaceholder: 'gsk_...',
+  '0g': {
+    label: '0G Compute',
+    url: 'https://router-api.0g.ai/v1/chat/completions',
+    defaultModel: 'zai-org/GLM-5-FP8',
+    keyPlaceholder: 'sk-...',
   },
   openrouter: {
     label: 'OpenRouter',
     url: 'https://openrouter.ai/api/v1/chat/completions',
     defaultModel: 'openai/gpt-oss-20b:free',
     keyPlaceholder: 'sk-or-...',
+  },
+  groq: {
+    label: 'Groq',
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    defaultModel: 'llama-3.3-70b-versatile',
+    keyPlaceholder: 'gsk_...',
   },
 }
 
@@ -76,9 +82,14 @@ async function* streamSSE(response: Response) {
   }
 }
 
-export function ChatPanel() {
+interface ChatPanelProps {
+  initialMessages?: ChatMessage[]
+  onMessagesChange?: (messages: ChatMessage[]) => void
+}
+
+export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps = {}) {
   const [provider, setProvider] = useState<Provider>(
-    () => (localStorage.getItem(`${STORAGE_PREFIX}-provider`) as Provider | null) ?? 'openrouter'
+    () => (localStorage.getItem(`${STORAGE_PREFIX}-provider`) as Provider | null) ?? '0g'
   )
   const cfg = PROVIDER_CONFIG[provider]
 
@@ -86,7 +97,7 @@ export function ChatPanel() {
   const [model, setModel] = useState(() => loadModel(provider))
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [showSettings, setShowSettings] = useState(() => !localStorage.getItem(storKey(provider, 'key')))
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? [])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [streamText, setStreamText] = useState('')
@@ -99,6 +110,11 @@ export function ChatPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamText])
+
+  useEffect(() => {
+    onMessagesChange?.(messages)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages])
 
   const switchProvider = (p: Provider) => {
     setProvider(p)
@@ -233,6 +249,44 @@ export function ChatPanel() {
 
       setMessages((prev) => [...prev, { role: 'assistant', content: assistantText || 'Done!', isGraphBuild: graphBuilt }])
     } catch (err) {
+      // Auto-fallback: if 0G fails and user has an OpenRouter key, retry once
+      if (provider === '0g') {
+        const orKey = localStorage.getItem(storKey('openrouter', 'key'))
+        if (orKey) {
+          try {
+            const orCfg = PROVIDER_CONFIG['openrouter']
+            const orHeaders = {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${orKey}`,
+              'HTTP-Referer': 'https://440hz.ai',
+              'X-Title': '440hz NodeUI',
+            }
+            const res = await fetch(orCfg.url, {
+              method: 'POST',
+              headers: orHeaders,
+              body: JSON.stringify({
+                model: orCfg.defaultModel,
+                messages: [{ role: 'system', content: AGENT_SYSTEM_PROMPT }, ...newHistory],
+                tools: [CREATE_GRAPH_TOOL],
+                tool_choice: 'auto',
+                max_tokens: 4096,
+              }),
+            })
+            if (res.ok) {
+              const orData = await res.json() as { choices?: { message: { content: string | null } }[] }
+              if (orData.choices?.length) {
+                const fallbackContent = orData.choices[0].message?.content ?? 'Done.'
+                const fallbackText = `⚡ 0G unavailable — using OpenRouter\n\n${fallbackContent}`
+                setMessages(prev => [...prev, { role: 'assistant', content: fallbackText }])
+                setHistory([...newHistory, { role: 'assistant', content: fallbackText }])
+                return
+              }
+            }
+          } catch {
+            // fallback failed — fall through to show original error
+          }
+        }
+      }
       setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err instanceof Error ? err.message : String(err)}` }])
     } finally {
       setLoading(false)
@@ -248,27 +302,27 @@ export function ChatPanel() {
     <>
       {/* Provider + settings sub-header */}
       <div style={{
-        padding: '6px 10px', borderBottom: '1px solid #1e1e3a',
+        padding: '6px 10px', borderBottom: '1px solid var(--nodeui-border-subtle)',
         display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
-        background: '#0d0d1a',
+        background: 'var(--nodeui-canvas)',
       }}>
-        {(['groq', 'openrouter'] as Provider[]).map((p) => (
+        {(['0g', 'openrouter', 'groq'] as Provider[]).map((p) => (
           <button key={p} onClick={() => switchProvider(p)} style={{
             fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 8,
             cursor: 'pointer', border: 'none', fontFamily: 'inherit',
             background: provider === p ? '#6366f133' : 'none',
-            color: provider === p ? '#6366f1' : '#4a4a6a',
+            color: provider === p ? '#6366f1' : 'var(--nodeui-dim)',
           }}>
             {PROVIDER_CONFIG[p].label}
           </button>
         ))}
-        <div style={{ flex: 1, fontSize: 9, color: '#2a2a4e', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 4 }}>
+        <div style={{ flex: 1, fontSize: 9, color: 'var(--nodeui-dim)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 4 }}>
           {model || cfg.defaultModel}
         </div>
         <button
           onClick={() => setShowSettings((v) => !v)}
           title="Settings"
-          style={{ color: showSettings ? '#6366f1' : '#4a4a6a', background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}
+          style={{ color: showSettings ? '#6366f1' : 'var(--nodeui-dim)', background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}
         >
           <Key size={11} />
         </button>
@@ -276,26 +330,26 @@ export function ChatPanel() {
 
       {/* Settings drawer */}
       {showSettings && (
-        <div style={{ padding: '8px 10px', borderBottom: '1px solid #1e1e3a', background: '#0d0d1a', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--nodeui-border-subtle)', background: 'var(--nodeui-canvas)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: '#8888aa', width: 32, flexShrink: 0 }}>Key</span>
+            <span style={{ fontSize: 10, color: 'var(--nodeui-muted)', width: 32, flexShrink: 0 }}>Key</span>
             <input
               type="password"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && saveSettings()}
               placeholder={apiKey ? `Replace (${cfg.keyPlaceholder})` : cfg.keyPlaceholder}
-              style={{ flex: 1, background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 5, padding: '4px 8px', fontSize: 11, color: '#f0f0ff', outline: 'none', fontFamily: 'monospace' }}
+              style={{ flex: 1, background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)', borderRadius: 5, padding: '4px 8px', fontSize: 11, color: 'var(--nodeui-text)', outline: 'none', fontFamily: 'monospace' }}
               autoFocus
             />
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: '#8888aa', width: 32, flexShrink: 0 }}>Model</span>
+            <span style={{ fontSize: 10, color: 'var(--nodeui-muted)', width: 32, flexShrink: 0 }}>Model</span>
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder={cfg.defaultModel}
-              style={{ flex: 1, background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 5, padding: '4px 8px', fontSize: 11, color: '#f0f0ff', outline: 'none', fontFamily: 'monospace' }}
+              style={{ flex: 1, background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)', borderRadius: 5, padding: '4px 8px', fontSize: 11, color: 'var(--nodeui-text)', outline: 'none', fontFamily: 'monospace' }}
             />
           </div>
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
@@ -304,14 +358,14 @@ export function ChatPanel() {
             </button>
             <div style={{ flex: 1 }} />
             {apiKey && (
-              <button onClick={() => { setShowSettings(false); setApiKeyInput('') }} style={{ color: '#4a4a6a', background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
+              <button onClick={() => { setShowSettings(false); setApiKeyInput('') }} style={{ color: 'var(--nodeui-dim)', background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
                 <X size={11} />
               </button>
             )}
             <button
               onClick={saveSettings}
               disabled={!apiKeyInput.trim()}
-              style={{ fontSize: 11, fontWeight: 600, color: '#0d0d1a', background: apiKeyInput.trim() ? '#6366f1' : '#2a2a3e', border: 'none', borderRadius: 5, padding: '4px 12px', cursor: apiKeyInput.trim() ? 'pointer' : 'not-allowed' }}
+              style={{ fontSize: 11, fontWeight: 600, color: 'var(--nodeui-canvas)', background: apiKeyInput.trim() ? '#6366f1' : 'var(--nodeui-border-strong)', border: 'none', borderRadius: 5, padding: '4px 12px', cursor: apiKeyInput.trim() ? 'pointer' : 'not-allowed' }}
             >
               Save
             </button>
@@ -323,8 +377,8 @@ export function ChatPanel() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {messages.length === 0 && !streamText && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8 }}>
-            <Sparkles size={20} color="#2a2a4e" />
-            <span style={{ fontSize: 11, color: '#4a4a6a', textAlign: 'center' }}>
+            <Sparkles size={20} color="var(--nodeui-dim)" />
+            <span style={{ fontSize: 11, color: 'var(--nodeui-dim)', textAlign: 'center' }}>
               Describe your RL environment and the agent will build the node graph.
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: '100%', marginTop: 4 }}>
@@ -347,28 +401,28 @@ export function ChatPanel() {
 
         {messages.map((msg, i) => (
           <div key={i} style={{ display: 'flex', gap: 6, flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
-            <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: msg.role === 'user' ? '#6366f133' : '#1e1e3a', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${msg.role === 'user' ? '#6366f144' : '#2a2a3e'}` }}>
+            <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: msg.role === 'user' ? '#6366f133' : 'var(--nodeui-border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${msg.role === 'user' ? '#6366f144' : 'var(--nodeui-border-strong)'}` }}>
               {msg.role === 'user' ? <User size={10} color="#6366f1" /> : <Bot size={10} color="#10b981" />}
             </div>
-            <div style={{ maxWidth: '85%', background: msg.role === 'user' ? '#6366f122' : '#1a1a2e', border: `1px solid ${msg.role === 'user' ? '#6366f133' : '#2a2a3e'}`, borderRadius: msg.role === 'user' ? '10px 2px 10px 10px' : '2px 10px 10px 10px', padding: '6px 10px' }}>
+            <div style={{ maxWidth: '85%', background: msg.role === 'user' ? '#6366f122' : 'var(--nodeui-node)', border: `1px solid ${msg.role === 'user' ? '#6366f133' : 'var(--nodeui-border-strong)'}`, borderRadius: msg.role === 'user' ? '10px 2px 10px 10px' : '2px 10px 10px 10px', padding: '6px 10px' }}>
               {msg.isGraphBuild && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 4 }}>
                   <Sparkles size={10} color="#10b981" />
                   <span style={{ fontSize: 9, color: '#10b981', fontWeight: 700 }}>Graph built</span>
                 </div>
               )}
-              <span style={{ fontSize: 11, color: '#e0e0f0', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{msg.content}</span>
+              <span style={{ fontSize: 11, color: 'var(--nodeui-text)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{msg.content}</span>
             </div>
           </div>
         ))}
 
         {streamText && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-            <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: '#1e1e3a', border: '1px solid #2a2a3e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: 'var(--nodeui-border-subtle)', border: '1px solid var(--nodeui-border-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Bot size={10} color="#10b981" />
             </div>
-            <div style={{ maxWidth: '85%', background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: '2px 10px 10px 10px', padding: '6px 10px' }}>
-              <span style={{ fontSize: 11, color: '#e0e0f0', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+            <div style={{ maxWidth: '85%', background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)', borderRadius: '2px 10px 10px 10px', padding: '6px 10px' }}>
+              <span style={{ fontSize: 11, color: 'var(--nodeui-text)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
                 {streamText}
                 <span style={{ display: 'inline-block', width: 2, height: 10, background: '#6366f1', marginLeft: 1, animation: 'blink 1s infinite', verticalAlign: 'middle' }} />
               </span>
@@ -378,11 +432,11 @@ export function ChatPanel() {
 
         {loading && !streamText && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: '#1e1e3a', border: '1px solid #2a2a3e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: 'var(--nodeui-border-subtle)', border: '1px solid var(--nodeui-border-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Bot size={10} color="#10b981" />
             </div>
             <Loader2 size={11} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />
-            <span style={{ fontSize: 10, color: '#4a4a6a' }}>Thinking… (may take 30–90s on free tier)</span>
+            <span style={{ fontSize: 10, color: 'var(--nodeui-dim)' }}>Thinking… (may take 30–90s on free tier)</span>
           </div>
         )}
 
@@ -390,9 +444,9 @@ export function ChatPanel() {
       </div>
 
       {/* Input */}
-      <div style={{ padding: '8px 10px', borderTop: '1px solid #1e1e3a', display: 'flex', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
+      <div style={{ padding: '8px 10px', borderTop: '1px solid var(--nodeui-border-subtle)', display: 'flex', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
         {!apiKey ? (
-          <span style={{ flex: 1, fontSize: 11, color: '#4a4a6a', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ flex: 1, fontSize: 11, color: 'var(--nodeui-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <Key size={11} /> Set your API key above
           </span>
         ) : (
@@ -404,17 +458,17 @@ export function ChatPanel() {
             placeholder="Describe your RL env… (Enter to send)"
             rows={2}
             disabled={loading}
-            style={{ flex: 1, background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 7, padding: '6px 10px', fontSize: 11, color: '#f0f0ff', outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, opacity: loading ? 0.5 : 1 }}
+            style={{ flex: 1, background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)', borderRadius: 7, padding: '6px 10px', fontSize: 11, color: 'var(--nodeui-text)', outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, opacity: loading ? 0.5 : 1 }}
             onFocus={(e) => { e.currentTarget.style.borderColor = '#6366f155' }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = '#2a2a3e' }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--nodeui-border-strong)' }}
           />
         )}
         <button
           onClick={sendMessage}
           disabled={loading || !input.trim() || !apiKey}
-          style={{ width: 32, height: 32, borderRadius: 7, flexShrink: 0, background: !loading && input.trim() && apiKey ? '#6366f1' : '#1a1a2e', border: 'none', cursor: !loading && input.trim() && apiKey ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+          style={{ width: 32, height: 32, borderRadius: 7, flexShrink: 0, background: !loading && input.trim() && apiKey ? '#6366f1' : 'var(--nodeui-node)', border: 'none', cursor: !loading && input.trim() && apiKey ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
         >
-          {loading ? <Loader2 size={12} color="#4a4a6a" style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={12} color={input.trim() && apiKey ? '#fff' : '#4a4a6a'} />}
+          {loading ? <Loader2 size={12} color="var(--nodeui-dim)" style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={12} color={input.trim() && apiKey ? '#fff' : 'var(--nodeui-dim)'} />}
         </button>
       </div>
 
