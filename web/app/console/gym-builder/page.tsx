@@ -12,6 +12,7 @@ import { useGraphStore } from "@nodeui/store/graphStore";
 import type { AppNode, AppEdge } from "@nodeui/types/graph";
 import { generatePython } from "@/lib/nodeui/utils/codegen";
 import { parsePythonToGraph } from "@/lib/nodeui/utils/codegen/parsePython";
+import { generateConfigAndRequirements } from "@/lib/nodeui/utils/codegen/generateConfig";
 import {
   uploadGymBundle,
   downloadGymBundle,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/utils/upload0g";
 import { useGymStore } from "@/lib/gymStore";
 import { publishGymListing, type MarketListing } from "@/lib/utils/kvMarketplace";
+import { contractListGym } from "@/lib/contracts";
 
 const MonacoEditor = dynamic(() => import("./_MonacoEditor"), { ssr: false });
 
@@ -160,6 +162,7 @@ const DEFAULT_CONTENTS: Record<string, string> = {
   "reward.py": INITIAL_REWARD,
   "config.yml": INITIAL_CONFIG,
   "__init__.py": 'from .gym_env import GymEnv\n\n__all__ = ["GymEnv"]\n',
+  "requirements.txt": "gymnasium>=0.26\nnumpy\n",
 };
 
 const FILE_TREE = [
@@ -167,6 +170,7 @@ const FILE_TREE = [
   { name: "reward.py", icon: "ⓟ" },
   { name: "config.yml", icon: "⚙️" },
   { name: "__init__.py", icon: "ⓟ" },
+  { name: "requirements.txt", icon: "📦" },
 ];
 
 // ── Main page ──────────────────────────────────────────────────
@@ -175,8 +179,14 @@ export default function GymBuilderPage() {
   const [storageCid, setStorageCid] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // ── Chat history (persisted with bundle) ──
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  // ── Chat history (persisted with bundle + localStorage) ──
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const stored = localStorage.getItem('440hz-chat-draft')
+      if (stored) return JSON.parse(stored) as ChatMessage[]
+    } catch { /* ignore */ }
+    return []
+  });
 
   // ── Publish modal ──
   const [publishOpen, setPublishOpen] = useState(false);
@@ -293,6 +303,30 @@ export default function GymBuilderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileContents["gym_env.py"]]);
 
+  // ── Effect 3: Graph → config.yml + requirements.txt (debounced 600ms) ──────
+  useEffect(() => {
+    const { nodes } = useGraphStore.getState();
+    if (nodes.length === 0) return;
+    const timer = setTimeout(() => {
+      const { nodes: n } = useGraphStore.getState();
+      const { yaml, requirements } = generateConfigAndRequirements(n);
+      setFileContents((prev) => ({
+        ...prev,
+        "config.yml": yaml,
+        "requirements.txt": requirements,
+      }));
+    }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphVersion]);
+
+  // ── Effect 4: Persist chat to localStorage ───────────────────
+  useEffect(() => {
+    try {
+      localStorage.setItem('440hz-chat-draft', JSON.stringify(chatMessages))
+    } catch { /* ignore quota errors */ }
+  }, [chatMessages]);
+
   // ── File handlers ──
   function handleFileSelect(name: string) {
     setOpenFiles((prev) => (prev.includes(name) ? prev : [...prev, name]));
@@ -406,6 +440,18 @@ export default function GymBuilderPage() {
       } catch { /* attribution best-effort */ }
 
       await publishGymListing(listing);
+
+      // Write on-chain listing — non-blocking, best-effort alongside KV write
+      const priceWei = !publishPrice || publishPrice === '0'
+        ? 0n
+        : BigInt(Math.round(parseFloat(publishPrice) * 1e18))
+      await contractListGym(
+        rootHash,
+        publishName,
+        publishCategory,
+        publishLicense,
+        priceWei,
+      )
     } catch (e) {
       setPublishListingError((e as Error).message);
     } finally {
