@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-3812d0a21722bae0be53a0cf99cb14faf8dc29e7",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.4.3"
+  },
+  "userSourceNameMap": {
+    "contracts/L2Registrar.sol": "project/contracts/L2Registrar.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/L2Registrar.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.19;\n\ninterface IL2Registry {\n    function createSubnode(\n        bytes32 node,\n        string calldata label,\n        address owner,\n        bytes[] calldata data\n    ) external returns (bytes32);\n\n    function owner(bytes32 node) external view returns (address);\n}\n\n/// @title 440hz L2 Subname Registrar\n/// @notice Issues subnames under 440hz.eth (e.g. alice.440hz.eth) on Base Sepolia.\n/// @dev Deployed by 440hz admin. Must be approved via registry.addRegistrar() before use.\ncontract L2Registrar {\n    IL2Registry public immutable registry;\n    bytes32 public immutable baseNode;\n    address public owner;\n\n    event SubnameRegistered(string label, address indexed registrant, bytes32 node);\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\n\n    error Unauthorized();\n    error InvalidLabel();\n    error AlreadyRegistered();\n\n    modifier onlyOwner() {\n        if (msg.sender != owner) revert Unauthorized();\n        _;\n    }\n\n    constructor(address _registry, bytes32 _baseNode) {\n        registry = IL2Registry(_registry);\n        baseNode = _baseNode;\n        owner = msg.sender;\n    }\n\n    /// @notice Register a subname under 440hz.eth. Anyone can call this.\n    /// @param label The subname label (e.g. \"alice\" for alice.440hz.eth)\n    /// @param subOwner The address that will own this subname\n    function register(string calldata label, address subOwner) external returns (bytes32 node) {\n        if (bytes(label).length == 0) revert InvalidLabel();\n        if (subOwner == address(0)) revert InvalidLabel();\n        node = registry.createSubnode(baseNode, label, subOwner, new bytes[](0));\n        emit SubnameRegistered(label, subOwner, node);\n    }\n\n    /// @notice Transfer admin ownership of this registrar\n    function transferOwnership(address newOwner) external onlyOwner {\n        emit OwnershipTransferred(owner, newOwner);\n        owner = newOwner;\n    }\n}\n"
+      }
+    }
+  }
+}
