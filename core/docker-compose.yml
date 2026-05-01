@@ -11,6 +11,40 @@
 
 services:
 
+  # The Provider API Daemon — FastAPI service that manages training tasks,
+  # streams real metrics to the web console, and handles 0G network registration.
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    image: 440hz/provider-api:latest
+    container_name: 440hz-api
+    ports:
+      - "8420:8420"
+    networks: [hz_net]
+    environment:
+      LOG_LEVEL: INFO
+      PORT: "8420"
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      PRIVATE_KEY: ${PRIVATE_KEY:-}
+      PROVIDER_PRIVATE_KEY: ${PROVIDER_PRIVATE_KEY:-${PRIVATE_KEY:-}}
+      RPC_URL: ${RPC_URL:-https://evmrpc-testnet.0g.ai}
+      PROVIDER_ENDPOINT: ${PROVIDER_ENDPOINT:-http://localhost:8420}
+      PROVIDER_MODELS: ${PROVIDER_MODELS:-Qwen/Qwen2.5-7B-Instruct}
+      PROVIDER_PRICE_PER_TOKEN: ${PROVIDER_PRICE_PER_TOKEN:-1000000000}
+      # Let the daemon spawn the executor in the same Python env.
+      HZ_PYTHONPATH: /opt/440hz
+      HZ_EXECUTOR_MODULE: executor.orchestrator
+      GYM_OVERRIDE_URL: http://gym:8080
+    volumes:
+      - provider_state:/root/.440hz
+      - executor_scratch:/var/440hz
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      gym:
+        condition: service_healthy
+
   # The Gym — built from the example dir, runs the SQL debugging environment.
   gym:
     build:
@@ -20,10 +54,11 @@ services:
     container_name: 440hz-gym
     networks: [hz_net]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=2)"]
       interval: 5s
-      timeout: 2s
-      retries: 5
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   # The Executor — runs the orchestrator. In local mode we skip the nested
   # DinD entirely and let the orchestrator hit the gym container by name on
@@ -71,3 +106,4 @@ networks:
 
 volumes:
   executor_scratch:
+  provider_state:
