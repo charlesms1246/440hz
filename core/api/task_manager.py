@@ -54,6 +54,8 @@ _log_queues: dict[str, asyncio.Queue] = {}
 _da_queue: asyncio.Queue = asyncio.Queue(maxsize=512)
 # Running subprocess handles for cancellation.
 _processes: dict[str, asyncio.subprocess.Process] = {}
+# Cache of submitted ZGTask objects (for 0G protocol tasks only).
+_zg_tasks: dict[str, object] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -421,3 +423,191 @@ async def stream_da_events() -> AsyncIterator[LogEntry]:
     while True:
         entry = await _da_queue.get()
         yield entry
+
+
+# ---------------------------------------------------------------------------
+# 0G fine-tuning provider protocol bridge
+# ---------------------------------------------------------------------------
+
+def _state_to_zg_progress(state: str, log_entries: list[LogEntry] | None = None) -> str:
+    """Map internal task state + log events to 0G progress enum values."""
+    if state == "failed":
+        return "Failed"
+    if state == "cancelled":
+        return "Failed"
+    if state == "completed":
+        return "Finished"
+    if state == "pending":
+        return "Init"
+    # running — check last status event for finer granularity
+    if state == "running" and log_entries:
+        stage_map = {
+            "starting":              "Init",
+            "loaded_config":         "SettingUp",
+            "fetching_model":        "SettingUp",
+            "fetching_gym":          "SettingUp",
+            "gym_override":          "SettingUp",
+            "gym_ready":             "SetUp",
+            "building_supervisor":   "SetUp",
+            "loading_model":         "SetUp",
+            "model_loaded":          "SetUp",
+            "training":              "Training",
+            "training_complete":     "Trained",
+            "uploading_adapter":     "Delivering",
+            "federation_submitted":  "Delivered",
+        }
+        for entry in reversed(log_entries):
+            if entry.type == "status":
+                stage = entry.payload.get("stage", "")
+                if stage in stage_map:
+                    return stage_map[stage]
+            if entry.type == "complete":
+                return "Delivered"
+    return "Training"  # default running state
+
+
+async def submit_zg_task(zg_task) -> tuple:
+    """
+    Translate a ZGTask (from 0G SDK) into an internal TaskSubmitRequest and submit it.
+    Returns (ZGTask with id populated, internal task_id).
+    """
+    from .models import (
+        BaseModelRef, GymRef, OverseerRef as OverseerRefModel, AlgorithmConfig,
+        OutputConfig, FederationConfig, RuntimeBudget, TaskSubmitRequest, ZGTask
+    )
+
+    # Parse trainingParams JSON string into algo config fields.
+    try:
+        params = json.loads(zg_task.trainingParams) if zg_task.trainingParams else {}
+    except (json.JSONDecodeError, TypeError):
+        params = {}
+
+    algo = AlgorithmConfig(
+        name=params.get("name", "grpo"),
+        num_episodes=int(params.get("num_episodes", 50)),
+        learning_rate=float(params.get("learning_rate", 2e-5)),
+        lora_rank=int(params.get("lora_rank", 16)),
+        lora_alpha=int(params.get("lora_alpha", 32)),
+        lora_dropout=float(params.get("lora_dropout", 0.05)),
+        target_modules=params.get("target_modules", ["q_proj", "k_proj", "v_proj", "o_proj"]),
+        max_new_tokens=int(params.get("max_new_tokens", 256)),
+        temperature=float(params.get("temperature", 0.9)),
+        top_p=float(params.get("top_p", 0.95)),
+        kl_coef=float(params.get("kl_coef", 0.04)),
+        batch_size=int(params.get("batch_size", 1)),
+        grad_accum_steps=int(params.get("grad_accum_steps", 4)),
+        group_size=int(params.get("group_size", 4)),
+        save_every=int(params.get("save_every", 10)),
+    )
+
+    # Resolve supervisor config from trainingParams or sensible default.
+    judge_url = params.get("judge_base_url", os.environ.get("OLLAMA_HOST", ""))
+    overseer = OverseerRefModel(
+        type="openai_compatible" if judge_url else "none",
+        base_url=f"http://{judge_url}/v1" if judge_url and not judge_url.startswith("http") else (judge_url or None),
+        model=params.get("judge_model", None),
+        rubric=params.get("rubric", None),
+        scoring_mode=params.get("scoring_mode", "per_step"),
+    )
+
+    try:
+        fee_og = float(zg_task.fee) / 1e18  # aOG → OG
+    except (ValueError, TypeError):
+        fee_og = 0.0
+
+    req = TaskSubmitRequest(
+        arena_name=params.get("arena_name", f"0g-task-{zg_task.nonce[:8]}"),
+        base_system_prompt=params.get("system_prompt", None),
+        submitter_address=zg_task.userAddress,
+        base_model=BaseModelRef(
+            source="0g_storage",
+            ref=zg_task.preTrainedModelHash,
+            root_hash=zg_task.preTrainedModelHash,
+        ),
+        gym=GymRef(
+            root_hash=zg_task.datasetHash,
+        ),
+        overseer=overseer,
+        algorithm=algo,
+        output=OutputConfig(destination="0g_storage"),
+        runtime=RuntimeBudget(
+            max_runtime_seconds=int(params.get("max_runtime_seconds", 7200)),
+            escrow_tx_hash=zg_task.nonce,  # nonce serves as the payment proof reference
+            escrow_amount_og=fee_og,
+        ),
+    )
+
+    status = await submit_task(req)
+
+    zg_task.id = status.id
+    import datetime
+    now_iso = datetime.datetime.utcnow().isoformat() + "Z"
+    zg_task.createdAt = now_iso
+    zg_task.updatedAt = now_iso
+    zg_task.progress = "Init"
+
+    # Cache the ZGTask so get_zg_task can return the original fields.
+    _zg_tasks[status.id] = zg_task
+
+    return zg_task, status.id
+
+
+def get_zg_task(task_id: str):
+    """Return a ZGTask view of an internal task for the 0G protocol."""
+    from .models import ZGTask
+    ts = _tasks.get(task_id)
+    if ts is None:
+        return None
+
+    # Snapshot log queue for progress derivation.
+    q = _log_queues.get(task_id)
+    log_entries: list[LogEntry] = list(q._queue) if q else []  # type: ignore[attr-defined]
+
+    progress = _state_to_zg_progress(ts.state, log_entries)
+    deliver_index = None
+    if ts.receipt and isinstance(ts.receipt, dict):
+        deliver_index = ts.receipt.get("adapter_ref")
+
+    import datetime
+    updated = datetime.datetime.utcfromtimestamp(ts.updated_at).isoformat() + "Z"
+
+    # If we have the original ZGTask cached (submitted via 0G protocol), update it.
+    cached = _zg_tasks.get(task_id)
+    if cached is not None:
+        cached.progress = progress  # type: ignore[attr-defined]
+        cached.updatedAt = updated  # type: ignore[attr-defined]
+        if deliver_index:
+            cached.deliverIndex = deliver_index  # type: ignore[attr-defined]
+        return cached
+
+    # Fallback: reconstruct from persisted state (e.g. after restart, or internal submit).
+    created = datetime.datetime.utcfromtimestamp(ts.created_at).isoformat() + "Z"
+    return ZGTask(
+        id=task_id,
+        createdAt=created,
+        updatedAt=updated,
+        userAddress=ts.submitter_address,
+        preTrainedModelHash="",
+        datasetHash="",
+        trainingParams="{}",
+        fee="0",
+        nonce="",
+        signature="",
+        progress=progress,
+        deliverIndex=deliver_index,
+    )
+
+
+def get_zg_task_logs(task_id: str, max_lines: int = 200) -> list[str]:
+    """Return recent log lines for the task as plain strings."""
+    q = _log_queues.get(task_id)
+    if not q:
+        return []
+    lines = []
+    for entry in list(q._queue):  # type: ignore[attr-defined]
+        if isinstance(entry, LogEntry):
+            msg = entry.payload.get("message", "")
+            if not msg:
+                msg = json.dumps(entry.payload)
+            lines.append(f"[{entry.type}] {msg}")
+    return lines[-max_lines:]

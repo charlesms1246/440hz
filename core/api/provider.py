@@ -29,6 +29,11 @@ PROVIDER_MODELS_RAW = os.environ.get(
 )
 PROVIDER_MODELS: list[str] = [m.strip() for m in PROVIDER_MODELS_RAW.split(",") if m.strip()]
 PROVIDER_PRICE_PER_TOKEN = int(os.environ.get("PROVIDER_PRICE_PER_TOKEN", "1000000000"))
+PROVIDER_CPU_COUNT = os.environ.get("PROVIDER_CPU_COUNT", "8")
+PROVIDER_MEMORY_GB = os.environ.get("PROVIDER_MEMORY_GB", "64")
+PROVIDER_GPU_COUNT = os.environ.get("PROVIDER_GPU_COUNT", "1")
+PROVIDER_GPU_TYPE  = os.environ.get("PROVIDER_GPU_TYPE", "")
+PROVIDER_STORAGE_GB = os.environ.get("PROVIDER_STORAGE_GB", "200")
 RPC_URL = os.environ.get("RPC_URL", "https://evmrpc-testnet.0g.ai")
 
 # In-memory registration state (refreshed after successful registration).
@@ -79,6 +84,11 @@ async def register_provider() -> dict:
         "PROVIDER_ENDPOINT": PROVIDER_ENDPOINT,
         "PROVIDER_MODELS": ",".join(PROVIDER_MODELS),
         "PROVIDER_PRICE_PER_TOKEN": str(PROVIDER_PRICE_PER_TOKEN),
+        "PROVIDER_CPU_COUNT": PROVIDER_CPU_COUNT,
+        "PROVIDER_MEMORY_GB": PROVIDER_MEMORY_GB,
+        "PROVIDER_GPU_COUNT": PROVIDER_GPU_COUNT,
+        "PROVIDER_GPU_TYPE": PROVIDER_GPU_TYPE,
+        "PROVIDER_STORAGE_GB": PROVIDER_STORAGE_GB,
     }
 
     log.info("Invoking provider registration script…")

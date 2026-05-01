@@ -185,3 +185,30 @@ class ProviderInfo(BaseModel):
     models: list[str] = Field(default_factory=list)
     # Price in aOG (1e-18 OG) per token.
     price_per_token: int = 0
+
+
+# ── 0G standard fine-tuning provider protocol ─────────────────────────────────
+# These models match the TypeScript interface in @0glabs/0g-serving-broker v2.x
+# provider/provider.ts — the SDK calls these routes on the registered endpoint.
+
+class ZGTask(BaseModel):
+    """Task as seen by the 0G SDK (camelCase to match TypeScript interface)."""
+    id: str | None = None
+    createdAt: str | None = None
+    updatedAt: str | None = None
+    userAddress: str
+    preTrainedModelHash: str   # 0G Storage root hash of the base model
+    datasetHash: str           # 0G Storage root hash of the gym/dataset bundle
+    trainingParams: str        # JSON string of training hyperparameters
+    fee: str                   # locked fee in aOG
+    nonce: str
+    signature: str             # user's request signature for verification
+    # Populated by provider once training progresses
+    progress: str | None = None   # Init|SettingUp|SetUp|Training|Trained|Delivering|Delivered|Finished|Failed
+    deliverIndex: str | None = None  # 0G Storage root hash of the delivered model
+
+
+class QuoteResponse(BaseModel):
+    """Response to GET /v1/quote — used by consumer to verify TEE attestation."""
+    quote: str           # TEE attestation bytes (hex); "0x" for non-TEE providers
+    provider_signer: str  # Ethereum address of the provider's signing key

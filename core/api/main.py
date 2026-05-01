@@ -15,13 +15,13 @@ import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import task_manager, provider
 from .metrics import get_system_metrics
-from .models import ProviderInfo, SystemMetrics, TaskStatus, TaskSubmitRequest
+from .models import ProviderInfo, QuoteResponse, SystemMetrics, TaskStatus, TaskSubmitRequest, ZGTask
 
 log = logging.getLogger("440hz.api")
 
@@ -53,6 +53,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Root — browser-friendly info (fixes 404 on port click in Portainer/Docker)
+# ---------------------------------------------------------------------------
+
+@app.get("/")
+async def root():
+    info = await provider.get_provider_info()
+    return {
+        "service": "440hz Provider API",
+        "version": "0.1.0",
+        "status": "online",
+        "provider_address": info.address,
+        "endpoint": info.endpoint,
+        "registered": info.registered,
+        "models": info.models,
+        "docs": "/docs",
+        "health": "/health",
+        "tasks": "/tasks",
+        "metrics": "/metrics",
+        "zg_quote": "/v1/quote",
+        "zg_fine_tuning": "/v1/fine-tuning/service",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +194,88 @@ async def stream_da_events():
 @app.get("/metrics", response_model=SystemMetrics)
 async def get_metrics():
     return await get_system_metrics()
+
+
+# ---------------------------------------------------------------------------
+# 0G fine-tuning provider protocol
+# Routes called by the 0G SDK / CLI when consumers submit fine-tuning jobs.
+# Spec: @0glabs/0g-serving-broker provider/provider.ts
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/quote", response_model=QuoteResponse)
+async def zg_quote():
+    """
+    TEE attestation endpoint required by the 0G protocol.
+    Non-TEE providers return "0x" as the quote.
+    """
+    info = await provider.get_provider_info()
+    return QuoteResponse(
+        quote="0x",
+        provider_signer=info.address,
+    )
+
+
+@app.post("/v1/fine-tuning/service", response_model=ZGTask, status_code=201)
+async def zg_create_task(zg_task: ZGTask):
+    """
+    Accept a fine-tuning task from the 0G SDK.
+    Translates ZGTask → internal TaskSubmitRequest and enqueues the job.
+    """
+    try:
+        result, _ = await task_manager.submit_zg_task(zg_task)
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/v1/fine-tuning/service", response_model=list[ZGTask])
+async def zg_list_tasks():
+    """List all tasks in 0G ZGTask format."""
+    tasks = task_manager.list_tasks()
+    results = []
+    for ts in tasks:
+        zt = task_manager.get_zg_task(ts.id)
+        if zt:
+            results.append(zt)
+    return results
+
+
+@app.get("/v1/fine-tuning/service/{task_id}", response_model=ZGTask)
+async def zg_get_task(task_id: str):
+    """Get a specific task by ID in 0G ZGTask format."""
+    zt = task_manager.get_zg_task(task_id)
+    if zt is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return zt
+
+
+@app.get("/v1/fine-tuning/service/{task_id}/log")
+async def zg_get_task_log(task_id: str, lines: int = 200):
+    """
+    Return task training logs as plain text.
+    Called by: 0g-compute-cli fine-tuning get-log --provider <addr> --task <id>
+    """
+    ts = task_manager.get_task(task_id)
+    if ts is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    log_lines = task_manager.get_zg_task_logs(task_id, max_lines=lines)
+    return JSONResponse(content={"taskId": task_id, "log": "\n".join(log_lines)})
+
+
+@app.post("/v1/fine-tuning/service/{task_id}/acknowledge")
+async def zg_acknowledge_delivery(task_id: str, request: Request):
+    """
+    Consumer acknowledges model download completion.
+    Called by: 0g-compute-cli fine-tuning acknowledge-model
+    After this the task transitions to Finished on the consumer side.
+    """
+    ts = task_manager.get_task(task_id)
+    if ts is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if ts.state not in ("completed", "failed"):
+        raise HTTPException(status_code=400, detail=f"Task is not yet complete (state={ts.state})")
+    zt = task_manager.get_zg_task(task_id)
+    return {"taskId": task_id, "acknowledged": True, "deliverIndex": zt.deliverIndex if zt else None}
 
 
 # ---------------------------------------------------------------------------
