@@ -1,6 +1,7 @@
 import { createConfig, http } from 'wagmi'
 import { injected } from 'wagmi/connectors'
 import { defineChain } from 'viem'
+import { baseSepolia } from 'viem/chains'
 
 export const zeroGGalileo = defineChain({
   id: 16602,
@@ -15,11 +16,14 @@ export const zeroGGalileo = defineChain({
   testnet: true,
 })
 
+export { baseSepolia }
+
 export const wagmiConfig = createConfig({
-  chains: [zeroGGalileo],
+  chains: [zeroGGalileo, baseSepolia],
   connectors: [injected()],
   transports: {
     [zeroGGalileo.id]: http('https://evmrpc-testnet.0g.ai'),
+    [baseSepolia.id]: http(),
   },
   ssr: true,
 })

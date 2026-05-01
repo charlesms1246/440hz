@@ -21,6 +21,7 @@ import {
 import { useGymStore } from "@/lib/gymStore";
 import { publishGymListing, type MarketListing } from "@/lib/utils/kvMarketplace";
 import { contractListGym } from "@/lib/contracts";
+import { registerSubname, buildEnsName } from "@/lib/utils/ensSubname";
 
 const MonacoEditor = dynamic(() => import("./_MonacoEditor"), { ssr: false });
 
@@ -203,6 +204,7 @@ export default function GymBuilderPage() {
   const [publishDone, setPublishDone] = useState(false);
   const [publishListingError, setPublishListingError] = useState<string | null>(null);
   const [publishingListing, setPublishingListing] = useState(false);
+  const [publishEnsName, setPublishEnsName] = useState<string | null>(null);
 
   // ── Save state ──
   const [saving, setSaving] = useState(false);
@@ -452,6 +454,22 @@ export default function GymBuilderPage() {
         publishLicense,
         priceWei,
       )
+
+      // Register gym.440hz.eth subname on Base Sepolia — best-effort
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (typeof window !== 'undefined' && (window as any).ethereum) {
+          const { BrowserProvider } = await import('ethers');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const provider = new BrowserProvider((window as any).ethereum);
+          const signer = await provider.getSigner();
+          const addr = await signer.getAddress();
+          const ensName = await registerSubname(publishName, 'gym', addr);
+          setPublishEnsName(ensName);
+        }
+      } catch {
+        setPublishEnsName(buildEnsName(publishName, 'gym'));
+      }
     } catch (e) {
       setPublishListingError((e as Error).message);
     } finally {
@@ -606,12 +624,18 @@ export default function GymBuilderPage() {
                     <span className="text-[11px] text-green">✓ Listed on marketplace</span>
                   </div>
                 )}
+                {publishEnsName && (
+                  <div className="flex items-center gap-2 p-2 bg-purple/10 border border-purple/20 rounded-lg">
+                    <span className="text-[11px] text-purple-300">⬡ {publishEnsName}</span>
+                  </div>
+                )}
                 <div className="flex justify-end">
                   <button
                     onClick={() => {
                       setPublishOpen(false);
                       setPublishDone(false);
                       setPublishListingError(null);
+                      setPublishEnsName(null);
                     }}
                     className="text-[12px] px-4 py-1.5 rounded-lg bg-purple hover:bg-purple/80 text-white transition-colors"
                   >
@@ -942,6 +966,7 @@ export default function GymBuilderPage() {
             setPublishName(projectName);
             setPublishDone(false);
             setPublishError(null);
+            setPublishEnsName(null);
           }}
           className="text-[12px] font-medium px-4 py-1.5 rounded-lg transition-all bg-purple hover:bg-purple/80 text-white"
         >

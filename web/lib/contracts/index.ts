@@ -3,8 +3,12 @@
 import { BrowserProvider, Contract, JsonRpcProvider, keccak256, toUtf8Bytes, getBytes } from 'ethers'
 
 // ── Deployed addresses ────────────────────────────────────────────────────────
-// After deploying: cd contracts && npx hardhat ignition deploy ignition/modules/Deploy440hz.ts --network galileo
-// Paste the output addresses below.
+// Galileo (0G testnet, chainId 16602):
+//   cd contracts && npx hardhat ignition deploy ignition/modules/Deploy440hz.ts --network galileo
+// Base Sepolia (chainId 84532):
+//   cd contracts && npx hardhat ignition deploy ignition/modules/DeployL2Registrar.ts --network baseSepolia
+//   Then call registry.addRegistrar(<L2Registrar address>) from the registry owner wallet.
+//   Finally set L2_REGISTRAR_ADDRESS in web/lib/utils/ensSubname.ts.
 export const CONTRACT_ADDRESSES: Record<number, { GymMarketplace: string; TrainingEscrow: string }> = {
   16602: {
     GymMarketplace: '0xb3Df63Ac5Ec5648d2E764a7C579148F29858E99D',

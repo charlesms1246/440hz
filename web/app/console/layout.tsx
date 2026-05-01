@@ -33,7 +33,7 @@ export default function ConsoleLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { isConnected, address } = useAccount();
-  const { username, persona, onboardingComplete, setPersona } =
+  const { username, ensName, persona, onboardingComplete, setPersona } =
     useProfileStore();
 
   // Auth guard
@@ -111,14 +111,22 @@ export default function ConsoleLayout({
           className="flex items-center gap-1.5 bg-surface-2 border-border hover:border-purple/40 px-2.5 py-1 transition-colors"
         >
           <div className="w-4 h-4 bg-purple flex items-center justify-center text-[9px] font-bold">
-            {username?.[0]?.toUpperCase() ?? "U"}
+            {(ensName || username)?.[0]?.toUpperCase() ?? "U"}
           </div>
-          <span className="text-[11px] text-gray-300 max-w-[80px] truncate">
-            {username}
-          </span>
-          <span className="text-[10px] text-muted font-mono">
-            {address?.slice(0, 4)}…{address?.slice(-3)}
-          </span>
+          {ensName ? (
+            <span className="text-[11px] text-purple-300 max-w-[120px] truncate font-mono">
+              {ensName}
+            </span>
+          ) : (
+            <>
+              <span className="text-[11px] text-gray-300 max-w-[80px] truncate">
+                {username}
+              </span>
+              <span className="text-[10px] text-muted font-mono">
+                {address?.slice(0, 4)}…{address?.slice(-3)}
+              </span>
+            </>
+          )}
         </Link>
       </header>
 

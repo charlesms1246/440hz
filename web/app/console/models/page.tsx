@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { downloadAdapterFromStorage } from "@/lib/utils/download0g";
+import { registerSubname, buildEnsName } from "@/lib/utils/ensSubname";
 
 const PROVIDER_API =
   process.env.NEXT_PUBLIC_PROVIDER_API_URL ?? "http://localhost:8420";
@@ -72,6 +73,7 @@ export default function ModelsPage() {
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [weightsEnsName, setWeightsEnsName] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -117,9 +119,25 @@ export default function ModelsPage() {
     if (!selected?.adapterRef || !selected.isOnChain) return;
     setExporting(true);
     setExportError(null);
+    setWeightsEnsName(null);
     try {
       const filename = `${selected.name.replace(/\s+/g, "-")}-adapter.zip`;
       await downloadAdapterFromStorage(selected.adapterRef, filename);
+      // Register weights.440hz.eth subname — best-effort
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (typeof window !== 'undefined' && (window as any).ethereum) {
+          const { BrowserProvider } = await import('ethers');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const provider = new BrowserProvider((window as any).ethereum);
+          const signer = await provider.getSigner();
+          const addr = await signer.getAddress();
+          const ensName = await registerSubname(selected.name, 'weights', addr);
+          setWeightsEnsName(ensName);
+        }
+      } catch {
+        setWeightsEnsName(buildEnsName(selected.name, 'weights'));
+      }
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "Download failed");
     } finally {
@@ -372,6 +390,13 @@ export default function ModelsPage() {
             {exportError && (
               <div className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 px-3 py-2">
                 {exportError}
+              </div>
+            )}
+
+            {/* Weights ENS name */}
+            {weightsEnsName && (
+              <div className="text-[11px] text-purple-300 bg-purple/10 border border-purple/20 px-3 py-2 font-mono">
+                ⬡ {weightsEnsName}
               </div>
             )}
 

@@ -7,6 +7,7 @@ import { useProfileStore, type Persona } from "@/lib/profileStore";
 import { zeroGGalileo } from "@/lib/wagmi";
 import { Logo440hz } from "@/app/_components/Logo440hz";
 import { ThemeToggle } from "@/app/_components/ThemeToggle";
+import { registerSubname, buildEnsName } from "@/lib/utils/ensSubname";
 
 const personas: { id: Persona; label: string; icon: string; desc: string }[] = [
   {
@@ -41,6 +42,7 @@ export default function OnboardingPage() {
     persona,
     onboardingComplete,
     setUsername,
+    setEnsName,
     setPersona,
     completeOnboarding,
   } = useProfileStore();
@@ -98,6 +100,16 @@ export default function OnboardingPage() {
       setNetworkOk(true);
     } catch {
       setNetworkOk(false);
+    }
+    // Register username.440hz.eth subname on Base Sepolia
+    if (address && username) {
+      try {
+        const ensName = await registerSubname(username, 'user', address);
+        setEnsName(ensName);
+      } catch {
+        // Best-effort — store the expected name even if tx fails
+        setEnsName(buildEnsName(username, 'user'));
+      }
     }
     completeOnboarding();
     setChecking(false);
