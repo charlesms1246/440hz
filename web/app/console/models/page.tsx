@@ -1,65 +1,169 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { downloadAdapterFromStorage } from "@/lib/utils/download0g";
 
-const models = [
-  {
-    id: "MDL-001",
-    name: "CodeGen-7B-RL-v3",
-    base: "Llama-3-7B",
-    status: "active",
-    loraSize: "142 MB",
-    loraStatus: "stable",
-    cid: "bafybeig7k2x9...c7k2",
-    blocks: 18420,
-    cost: 412.4,
-    arenas: ["ARN-001", "ARN-007"],
-    createdAt: "2026-04-18",
-  },
-  {
-    id: "MDL-002",
-    name: "TradingBot-Sigma-v2",
-    base: "Mistral-8x7B",
-    status: "active",
-    loraSize: "380 MB",
-    loraStatus: "training",
-    cid: "bafybeid9xm4...e2r1",
-    blocks: 32100,
-    cost: 890.2,
-    arenas: ["ARN-004"],
-    createdAt: "2026-04-12",
-  },
-  {
-    id: "MDL-003",
-    name: "RoboSim-Gemma",
-    base: "Gemma-2B",
-    status: "paused",
-    loraSize: "64 MB",
-    loraStatus: "stable",
-    cid: "bafybeih3p1...n3k7",
-    blocks: 7830,
-    cost: 184.0,
-    arenas: ["ARN-002"],
-    createdAt: "2026-04-05",
-  },
-  {
-    id: "MDL-004",
-    name: "MathReasoner-Qwen",
-    base: "Qwen-1.5B",
-    status: "active",
-    loraSize: "48 MB",
-    loraStatus: "stable",
-    cid: "bafybeif5lz9...8mn2",
-    blocks: 5600,
-    cost: 120.8,
-    arenas: ["ARN-011"],
-    createdAt: "2026-04-22",
-  },
-];
+const PROVIDER_API =
+  process.env.NEXT_PUBLIC_PROVIDER_API_URL ?? "http://localhost:8420";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type TaskReceipt = {
+  base_model?: string;
+  gym_image?: string;
+  adapter_ref?: string;
+  final_total_reward?: number;
+  final_episode_steps?: number;
+  started_at?: number;
+  finished_at?: number;
+};
+
+type ApiTask = {
+  id: string;
+  arena_name: string;
+  submitter_address: string;
+  state: "pending" | "running" | "completed" | "failed" | "cancelled";
+  created_at: string;
+  elapsed_seconds: number | null;
+  receipt: TaskReceipt | null;
+  error: string | null;
+};
+
+type ModelRow = {
+  id: string;
+  name: string;
+  base: string;
+  state: ApiTask["state"];
+  adapterRef: string | null;
+  isOnChain: boolean;
+  reward: number | null;
+  episodes: number | null;
+  elapsedHours: number | null;
+  createdAt: string;
+  gymImage: string | null;
+};
+
+function toRow(t: ApiTask): ModelRow {
+  const ref = t.receipt?.adapter_ref ?? null;
+  return {
+    id: t.id,
+    name: t.arena_name,
+    base: t.receipt?.base_model?.split("/").pop() ?? "–",
+    state: t.state,
+    adapterRef: ref,
+    isOnChain: ref != null && ref.startsWith("0x"),
+    reward: t.receipt?.final_total_reward ?? null,
+    episodes: t.receipt?.final_episode_steps ?? null,
+    elapsedHours:
+      t.elapsed_seconds != null ? t.elapsed_seconds / 3600 : null,
+    createdAt: t.created_at.split("T")[0],
+    gymImage: t.receipt?.gym_image ?? null,
+  };
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ModelsPage() {
-  const [selected, setSelected] = useState(models[0]);
+  const [tasks, setTasks] = useState<ApiTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lineageOpen, setLineageOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const res = await fetch(`${PROVIDER_API}/tasks`, {
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: ApiTask[] = await res.json();
+      const visible = data.filter((t) => t.state !== "cancelled");
+      setTasks(visible);
+      setOffline(false);
+      setSelectedId((prev) => {
+        if (prev == null && visible.length > 0) return visible[0].id;
+        return prev;
+      });
+    } catch {
+      setOffline(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTasks();
+    const timer = setInterval(fetchTasks, 5000);
+    return () => clearInterval(timer);
+  }, [fetchTasks]);
+
+  const rows = tasks.map(toRow);
+  const selected = rows.find((r) => r.id === selectedId) ?? rows[0] ?? null;
+
+  async function handleCopy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* fallback: do nothing */
+    }
+  }
+
+  async function handleExport() {
+    if (!selected?.adapterRef || !selected.isOnChain) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const filename = `${selected.name.replace(/\s+/g, "-")}-adapter.zip`;
+      await downloadAdapterFromStorage(selected.adapterRef, filename);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // ── Empty / loading states ─────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <span className="text-[12px] text-muted">Loading models…</span>
+      </div>
+    );
+  }
+
+  if (offline) {
+    return (
+      <div className="flex h-full items-center justify-center flex-col gap-3">
+        <div className="text-[12px] text-muted">Provider API offline</div>
+        <div className="text-[11px] text-muted/60 font-mono">{PROVIDER_API}</div>
+        <button
+          onClick={fetchTasks}
+          className="text-[11px] px-3 py-1.5 border border-border text-muted hover:text-white hover:border-gray-500 transition-colors mt-1"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center flex-col gap-2">
+        <div className="text-[12px] text-muted">No training runs yet</div>
+        <div className="text-[11px] text-muted/60">
+          Submit an arena job to start training a model.
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main layout ───────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -89,10 +193,10 @@ export default function ModelsPage() {
                 {[
                   "Model",
                   "Base",
-                  "LoRA Weights",
+                  "LoRA Status",
                   "0G Storage CID",
-                  "Blocks Used",
-                  "Cost (0G)",
+                  "Episodes",
+                  "Duration",
                   "Status",
                 ].map((h, i) => (
                   <th
@@ -105,50 +209,49 @@ export default function ModelsPage() {
               </tr>
             </thead>
             <tbody>
-              {models.map((m) => (
+              {rows.map((m) => (
                 <tr
                   key={m.id}
-                  onClick={() => setSelected(m)}
-                  className={`border-b border-border cursor-pointer transition-colors ${selected.id === m.id ? "bg-purple/10 border-l-2 border-l-purple" : "hover:bg-surface-2"}`}
+                  onClick={() => setSelectedId(m.id)}
+                  className={`border-b border-border cursor-pointer transition-colors ${
+                    selectedId === m.id
+                      ? "bg-purple/10 border-l-2 border-l-purple"
+                      : "hover:bg-surface-2"
+                  }`}
                 >
                   <td className="px-4 py-3">
                     <div className="text-[13px] font-semibold text-white">
                       {m.name}
                     </div>
                     <div className="text-[10px] font-mono text-muted">
-                      {m.id} · {m.createdAt}
+                      {m.id.slice(0, 12)}… · {m.createdAt}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-[12px] text-gray-400">
                     {m.base}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[12px] text-white font-mono">
-                        {m.loraSize}
-                      </span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 ${m.loraStatus === "training" ? "bg-amber/10 text-amber" : "bg-green/10 text-green"}`}
-                      >
-                        {m.loraStatus}
-                      </span>
-                    </div>
+                    <StateTag state={m.state} />
                   </td>
                   <td className="px-4 py-3 text-[11px] font-mono text-muted">
-                    {m.cid}
+                    {m.adapterRef
+                      ? m.isOnChain
+                        ? `${m.adapterRef.slice(0, 10)}…${m.adapterRef.slice(-6)}`
+                        : "local"
+                      : m.state === "running"
+                      ? "uploading…"
+                      : "–"}
                   </td>
                   <td className="px-4 py-3 text-right text-[12px] font-mono text-white">
-                    {m.blocks.toLocaleString()}
+                    {m.episodes != null ? m.episodes.toLocaleString() : "–"}
                   </td>
-                  <td className="px-4 py-3 text-right text-[12px] font-mono text-amber">
-                    {m.cost.toFixed(1)}
+                  <td className="px-4 py-3 text-right text-[12px] font-mono text-white">
+                    {m.elapsedHours != null
+                      ? `${m.elapsedHours.toFixed(1)}h`
+                      : "–"}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <span
-                      className={`text-[10px] px-2 py-0.5 ${m.status === "active" ? "bg-green/10 text-green" : "bg-border text-muted"}`}
-                    >
-                      {m.status}
-                    </span>
+                    <StateTag state={m.state} compact />
                   </td>
                 </tr>
               ))}
@@ -158,112 +261,181 @@ export default function ModelsPage() {
       </div>
 
       {/* Detail panel */}
-      <div className="w-72 border-l border-border bg-surface shrink-0 flex flex-col overflow-y-auto">
-        <div className="px-4 py-3 border-b border-border">
-          <div className="text-sm font-semibold text-white">
-            {selected.name}
-          </div>
-          <div className="text-[11px] text-muted font-mono mt-0.5">
-            {selected.id}
-          </div>
-        </div>
-
-        <div className="p-4 space-y-5">
-          {/* Details */}
-          <div className="space-y-2">
-            <InfoRow label="Base Model" value={selected.base} />
-            <InfoRow label="LoRA Size" value={selected.loraSize} />
-            <InfoRow
-              label="LoRA Status"
-              value={selected.loraStatus}
-              highlight={selected.loraStatus === "training" ? "amber" : "green"}
-            />
-            <InfoRow label="Created" value={selected.createdAt} />
-          </div>
-
-          {/* Storage CID */}
-          <div>
-            <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">
-              0G Storage CID
+      {selected && (
+        <div className="w-72 border-l border-border bg-surface shrink-0 flex flex-col overflow-y-auto">
+          <div className="px-4 py-3 border-b border-border">
+            <div className="text-sm font-semibold text-white">
+              {selected.name}
             </div>
-            <div className="bg-surface-2 border border-border px-3 py-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-mono text-gray-300 truncate">
-                {selected.cid}
-              </span>
-              <button className="shrink-0 text-[10px] text-purple-400 hover:text-purple-300 transition-colors">
-                Copy
+            <div className="text-[11px] text-muted font-mono mt-0.5">
+              {selected.id.slice(0, 20)}…
+            </div>
+          </div>
+
+          <div className="p-4 space-y-5">
+            {/* Details */}
+            <div className="space-y-2">
+              <InfoRow label="Base Model" value={selected.base} />
+              <InfoRow
+                label="Reward"
+                value={
+                  selected.reward != null
+                    ? selected.reward.toFixed(2)
+                    : "–"
+                }
+                highlight={selected.reward != null ? "green" : undefined}
+              />
+              <InfoRow
+                label="Episodes"
+                value={
+                  selected.episodes != null
+                    ? selected.episodes.toLocaleString()
+                    : "–"
+                }
+              />
+              <InfoRow
+                label="Duration"
+                value={
+                  selected.elapsedHours != null
+                    ? `${selected.elapsedHours.toFixed(2)}h`
+                    : "–"
+                }
+              />
+              <InfoRow label="Submitted" value={selected.createdAt} />
+            </div>
+
+            {/* Storage CID */}
+            <div>
+              <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">
+                0G Storage CID
+              </div>
+              {selected.adapterRef ? (
+                <div className="bg-surface-2 border border-border px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-mono text-gray-300 truncate">
+                    {selected.isOnChain
+                      ? selected.adapterRef
+                      : "local — not on 0G"}
+                  </span>
+                  {selected.isOnChain && (
+                    <button
+                      onClick={() => handleCopy(selected.adapterRef!)}
+                      className="shrink-0 text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
+                    >
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-surface-2 border border-border px-3 py-2">
+                  <span className="text-[11px] text-muted/60">
+                    {selected.state === "running"
+                      ? "Training in progress…"
+                      : "Not available"}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Training lineage */}
+            <div>
+              <button
+                onClick={() => setLineageOpen((o) => !o)}
+                className="w-full flex items-center justify-between text-[11px] text-muted hover:text-white transition-colors"
+              >
+                <span className="uppercase tracking-wider">
+                  Training Lineage
+                </span>
+                <span>{lineageOpen ? "▲" : "▼"}</span>
+              </button>
+              {lineageOpen && (
+                <div className="mt-2 space-y-1 border-l-2 border-border pl-3">
+                  {[
+                    `Base: ${selected.base}`,
+                    selected.gymImage
+                      ? `Gym: ${selected.gymImage.startsWith("0x") ? selected.gymImage.slice(0, 12) + "…" : selected.gymImage}`
+                      : "Gym: –",
+                    "RLAIF training (GRPO)",
+                    selected.adapterRef
+                      ? `LoRA adapter → ${selected.isOnChain ? "0G Storage" : "local disk"}`
+                      : "LoRA adapter: in progress",
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-center gap-2 text-[11px]">
+                      <span className="w-1.5 h-1.5 bg-purple shrink-0" />
+                      <span className="text-gray-400">{step}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Export error */}
+            {exportError && (
+              <div className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 px-3 py-2">
+                {exportError}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={handleExport}
+                disabled={!selected.isOnChain || exporting}
+                className="w-full text-[12px] py-1.5 bg-purple hover:bg-purple/80 text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {exporting
+                  ? "Downloading…"
+                  : selected.isOnChain
+                  ? "Export LoRA Weights"
+                  : "Export LoRA Weights (local only)"}
+              </button>
+              <button
+                disabled
+                className="w-full text-[12px] py-1.5 border border-border text-muted opacity-40 cursor-not-allowed"
+              >
+                Merge Weights
+              </button>
+              <button
+                disabled
+                className="w-full text-[12px] py-1.5 border border-green/30 text-green opacity-40 cursor-not-allowed"
+              >
+                List on Marketplace
               </button>
             </div>
           </div>
-
-          {/* Cost analysis */}
-          <div>
-            <div className="text-[10px] text-muted uppercase tracking-wider mb-2">
-              Cost Analysis
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-[12px]">
-                <span className="text-muted">Blocks consumed</span>
-                <span className="font-mono text-white">
-                  {selected.blocks.toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between text-[12px]">
-                <span className="text-muted">Total cost</span>
-                <span className="font-mono text-amber">
-                  {selected.cost.toFixed(1)} 0G
-                </span>
-              </div>
-              <div className="flex justify-between text-[12px]">
-                <span className="text-muted">Arenas</span>
-                <span className="text-white">{selected.arenas.join(", ")}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Training lineage */}
-          <div>
-            <button
-              onClick={() => setLineageOpen((o) => !o)}
-              className="w-full flex items-center justify-between text-[11px] text-muted hover:text-white transition-colors"
-            >
-              <span className="uppercase tracking-wider">Training Lineage</span>
-              <span>{lineageOpen ? "▲" : "▼"}</span>
-            </button>
-            {lineageOpen && (
-              <div className="mt-2 space-y-1 border-l-2 border-border pl-3">
-                {[
-                  "Base checkpoint",
-                  "Gym PythonCoding-v3",
-                  "RLAIF: GPT-4o judge",
-                  "LoRA merge #1 (ARN-001)",
-                  "Federated merge #142",
-                  "Current weights",
-                ].map((step, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[11px]">
-                    <span className="w-1.5 h-1.5 bg-purple shrink-0" />
-                    <span className="text-gray-400">{step}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="space-y-2 pt-2">
-            <button className="w-full text-[12px] py-1.5 bg-purple hover:bg-purple/80 text-white font-medium transition-colors">
-              Export LoRA Weights
-            </button>
-            <button className="w-full text-[12px] py-1.5 border border-border text-muted hover:text-white hover:border-gray-500 transition-colors">
-              Merge Weights
-            </button>
-            <button className="w-full text-[12px] py-1.5 border border-green/30 text-green hover:bg-green/10 transition-colors">
-              List on Marketplace
-            </button>
-          </div>
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function StateTag({
+  state,
+  compact,
+}: {
+  state: ApiTask["state"];
+  compact?: boolean;
+}) {
+  const cfg: Record<
+    ApiTask["state"],
+    { label: string; cls: string }
+  > = {
+    running:   { label: "training",  cls: "bg-amber/10 text-amber" },
+    pending:   { label: "pending",   cls: "bg-border text-muted" },
+    completed: { label: "stable",    cls: "bg-green/10 text-green" },
+    failed:    { label: "failed",    cls: "bg-red-400/10 text-red-400" },
+    cancelled: { label: "cancelled", cls: "bg-border text-muted" },
+  };
+  const { label, cls } = cfg[state];
+
+  if (compact) {
+    return (
+      <span className={`text-[10px] px-2 py-0.5 ${cls}`}>{label}</span>
+    );
+  }
+  return (
+    <span className={`text-[10px] px-1.5 py-0.5 ${cls}`}>{label}</span>
   );
 }
 
@@ -284,8 +456,8 @@ function InfoRow({
           highlight === "green"
             ? "text-green"
             : highlight === "amber"
-              ? "text-amber"
-              : "text-white"
+            ? "text-amber"
+            : "text-white"
         }
       >
         {value}
