@@ -187,7 +187,8 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
           throw new Error('Connect a wallet to use 0G Compute.\n\nInstall MetaMask or another injected wallet, then reload.')
 
         const { BrowserProvider } = await import('ethers')
-        const { createZGComputeNetworkBroker } = await import('@0glabs/0g-serving-broker')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { createZGComputeNetworkBroker } = await import('@0glabs/0g-serving-broker' as any)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ethProvider = new BrowserProvider((window as any).ethereum)
         const signer = await ethProvider.getSigner()
