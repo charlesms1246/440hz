@@ -40,6 +40,16 @@ log = logging.getLogger("440hz.executor")
 
 
 # ---------------------------------------------------------------------------
+# Structured event emitter
+# Task manager parses these JSONL lines from stdout to drive SSE streams.
+# ---------------------------------------------------------------------------
+
+def _emit(payload: dict) -> None:
+    """Write a JSONL event to stdout for the provider API daemon to consume."""
+    print(json.dumps({"ts": time.time(), **payload}), flush=True)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -99,11 +109,13 @@ def main() -> int:
         receipt["task_id"] = task.task_id
         receipt["base_model"] = task.base_model.ref
         receipt["gym_image"] = task.gym.image_ref
+        _emit({"type": "status", "stage": "loaded_config", "task_id": task.task_id})
 
         # ------------------------------------------------------------------
         # 1. Fetch base model
         # ------------------------------------------------------------------
         log.info("=== Stage 1/5: fetch base model ===")
+        _emit({"type": "status", "stage": "fetching_model", "model": task.base_model.ref})
         model_path = fetch_base_model(
             source=task.base_model.source,
             ref=task.base_model.ref,
@@ -126,9 +138,11 @@ def main() -> int:
         if gym_override:
             log.info("=== Stage 2/5: using gym override at %s (skipping container launch) ===",
                      gym_override)
+            _emit({"type": "status", "stage": "gym_override", "url": gym_override})
             gym_base_url = gym_override
         else:
             log.info("=== Stage 2/5: launch gym container ===")
+            _emit({"type": "status", "stage": "fetching_gym", "image": task.gym.image_ref})
             gym_image = fetch_gym_image(task.gym.image_ref, task.gym.root_hash)
             host_port = _free_port()
             gym_container_cm = GymContainer(
@@ -154,17 +168,20 @@ def main() -> int:
                 spec = gym_client.spec()
                 log.info("Gym ready: %s v%s — %s", spec.name, spec.version, spec.description)
                 receipt["gym_spec"] = spec.model_dump()
+                _emit({"type": "status", "stage": "gym_ready", "gym_name": spec.name, "gym_version": spec.version})
 
                 # ----------------------------------------------------------
                 # 3. Supervisor
                 # ----------------------------------------------------------
                 log.info("=== Stage 3/5: build supervisor (%s) ===", task.supervisor.type)
+                _emit({"type": "status", "stage": "building_supervisor", "supervisor_type": task.supervisor.type})
                 supervisor = Supervisor(task.supervisor)
 
                 # ----------------------------------------------------------
                 # 4. Load base model + attach LoRA
                 # ----------------------------------------------------------
                 log.info("=== Stage 4/5: load base model + attach LoRA ===")
+                _emit({"type": "status", "stage": "loading_model"})
                 model, tokenizer = load_base_model(task.base_model, model_path)
                 model = attach_lora(model, task.algorithm)
                 # Sanity-print the trainable param count.
@@ -173,11 +190,13 @@ def main() -> int:
                 log.info("Trainable params: %d / %d (%.2f%%)",
                          trainable, total, 100 * trainable / total)
                 receipt["trainable_params"] = trainable
+                _emit({"type": "status", "stage": "model_loaded", "trainable_params": trainable, "total_params": total})
 
                 # ----------------------------------------------------------
                 # 5. Train
                 # ----------------------------------------------------------
                 log.info("=== Stage 5/5: RLAIF training loop ===")
+                _emit({"type": "status", "stage": "training", "algorithm": task.algorithm.name, "num_episodes": task.algorithm.num_episodes})
                 trainer = RLAIFTrainer(
                     model=model,
                     tokenizer=tokenizer,
@@ -196,6 +215,9 @@ def main() -> int:
                     receipt["gym_logs_tail"] = gym_container_cm.logs(tail=200)
 
         # gym container is now stopped + removed
+        _emit({"type": "status", "stage": "training_complete",
+               "final_reward": receipt.get("final_total_reward"),
+               "final_steps": receipt.get("final_episode_steps")})
 
         # ------------------------------------------------------------------
         # Output: either submit to a federation aggregator, or upload directly
@@ -228,9 +250,12 @@ def main() -> int:
             # don't write our local adapter to 0G Storage. The user retrieves
             # the *aggregated* adapter via the round's on-chain receipt.
             log.info("Federation submission complete. Aggregator owns the upload.")
+            _emit({"type": "status", "stage": "federation_submitted",
+                   "aggregator": task.federation.aggregator_address})
 
         else:
             log.info("=== Uploading adapter ===")
+            _emit({"type": "status", "stage": "uploading_adapter", "destination": task.output.destination})
             adapter_ref = upload_adapter(
                 adapter_dir=adapter_dir,
                 destination=task.output.destination,
@@ -240,6 +265,9 @@ def main() -> int:
             receipt["adapter_ref"] = adapter_ref
 
         _emit_receipt(receipt, status="success")
+        _emit({"type": "complete", "status": "success",
+               "adapter_ref": receipt.get("adapter_ref"),
+               "receipt_path": os.environ.get("RECEIPT_PATH", "/var/440hz/receipt.json")})
         return 0
 
     except Exception as e:
@@ -247,6 +275,7 @@ def main() -> int:
         receipt["error"] = str(e)
         receipt["traceback"] = traceback.format_exc()
         _emit_receipt(receipt, status="failed")
+        _emit({"type": "error", "message": str(e)})
         return 1
 
 
