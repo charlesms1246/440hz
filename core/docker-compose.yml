@@ -31,6 +31,7 @@ services:
       RPC_URL: ${RPC_URL:-https://evmrpc-testnet.0g.ai}
       PROVIDER_ENDPOINT: ${PROVIDER_ENDPOINT:-http://localhost:8420}
       PROVIDER_MODELS: ${PROVIDER_MODELS:-Qwen/Qwen2.5-7B-Instruct}
+      PROVIDER_PRICE_PER_BYTE: ${PROVIDER_PRICE_PER_BYTE:-1}
       PROVIDER_PRICE_PER_TOKEN: ${PROVIDER_PRICE_PER_TOKEN:-1000000000}
       # Let the daemon spawn the executor in the same Python env.
       HZ_PYTHONPATH: /opt/440hz
