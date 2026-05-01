@@ -31,8 +31,12 @@ services:
       RPC_URL: ${RPC_URL:-https://evmrpc-testnet.0g.ai}
       PROVIDER_ENDPOINT: ${PROVIDER_ENDPOINT:-http://localhost:8420}
       PROVIDER_MODELS: ${PROVIDER_MODELS:-Qwen/Qwen2.5-7B-Instruct}
-      PROVIDER_PRICE_PER_BYTE: ${PROVIDER_PRICE_PER_BYTE:-1}
       PROVIDER_PRICE_PER_TOKEN: ${PROVIDER_PRICE_PER_TOKEN:-1000000000}
+      PROVIDER_CPU_COUNT: ${PROVIDER_CPU_COUNT:-8}
+      PROVIDER_MEMORY_GB: ${PROVIDER_MEMORY_GB:-64}
+      PROVIDER_GPU_COUNT: ${PROVIDER_GPU_COUNT:-1}
+      PROVIDER_GPU_TYPE: ${PROVIDER_GPU_TYPE:-}
+      PROVIDER_STORAGE_GB: ${PROVIDER_STORAGE_GB:-200}
       # Let the daemon spawn the executor in the same Python env.
       HZ_PYTHONPATH: /opt/440hz
       HZ_EXECUTOR_MODULE: executor.orchestrator
@@ -40,6 +44,9 @@ services:
     volumes:
       - provider_state:/root/.440hz
       - executor_scratch:/var/440hz
+      # Mount source so code changes are picked up on restart, no rebuild needed.
+      - ./api:/opt/440hz/api
+      - ./scripts:/opt/440hz/scripts
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
