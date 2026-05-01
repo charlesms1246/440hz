@@ -1,0 +1,11 @@
+{
+  "name": "440hz-provider-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Node scripts for 440hz provider daemon — on-chain registration and broker bridge.",
+  "dependencies": {
+    "@0glabs/0g-serving-broker": "^0.6.5",
+    "ethers": "^6.13.0"
+  }
+}
