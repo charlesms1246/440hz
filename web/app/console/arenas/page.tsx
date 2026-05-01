@@ -1,6 +1,12 @@
 'use client'
 
-import { useState, useCallback, type ReactNode } from 'react'
+import { useState, useCallback, useEffect, type ReactNode } from 'react'
+import { formatEther } from 'ethers'
+import {
+  contractEstimateCost,
+  contractDepositJob,
+  DEFAULT_COMPUTE_PROVIDER,
+} from '@/lib/contracts'
 import {
   ReactFlow, Background, Controls, MiniMap, addEdge,
   useNodesState, useEdgesState, type Connection, type Node, type NodeTypes,
@@ -525,7 +531,17 @@ function NewArenaWizard({
   const [draft, setDraft] = useState<WizardDraft>(DRAFT_DEFAULTS)
   const [errors, setErrors] = useState<Partial<Record<keyof WizardDraft, string>>>({})
   const [customModel, setCustomModel] = useState(false)
+  const [estimatedCost, setEstimatedCost] = useState<bigint>(0n)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
   const { savedGyms } = useGymStore()
+
+  useEffect(() => {
+    if (step !== 4) return
+    contractEstimateCost(draft.numEpisodes, draft.loraRank)
+      .then(setEstimatedCost)
+      .catch(() => setEstimatedCost(0n))
+  }, [step, draft.numEpisodes, draft.loraRank])
 
   function set<K extends keyof WizardDraft>(key: K, value: WizardDraft[K]) {
     setDraft(prev => ({ ...prev, [key]: value }))
@@ -580,8 +596,22 @@ function NewArenaWizard({
     }
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    setSubmitting(true)
+    setSubmitError('')
     const task = buildTask()
+    try {
+      await contractDepositJob(
+        task.task_id,
+        DEFAULT_COMPUTE_PROVIDER,
+        draft.gymHash,
+        estimatedCost,
+      )
+    } catch (e) {
+      // Non-blocking: arena is added to local state even if escrow tx fails
+      setSubmitError((e as Error).message)
+    }
+    setSubmitting(false)
     onSubmit({
       id: `ARN-${String(Date.now()).slice(-4)}`,
       name: draft.arenaName,
@@ -642,7 +672,7 @@ function NewArenaWizard({
           {step === 1 && <Step1Model draft={draft} set={set} errors={errors} customModel={customModel} setCustomModel={setCustomModel} />}
           {step === 2 && <Step2Gym   draft={draft} set={set} errors={errors} savedGyms={savedGyms} />}
           {step === 3 && <Step3Algorithm draft={draft} set={set} />}
-          {step === 4 && <Step4Review draft={draft} taskConfig={buildTask()} />}
+          {step === 4 && <Step4Review draft={draft} taskConfig={buildTask()} estimatedCost={estimatedCost} />}
         </div>
 
         {/* Footer */}
@@ -661,12 +691,20 @@ function NewArenaWizard({
               Next →
             </button>
           ) : (
-            <button
-              onClick={handleSubmit}
-              className="text-[12px] px-5 py-1.5 bg-purple hover:bg-purple/80 text-white rounded-lg font-medium transition-all"
-            >
-              Submit Arena
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              {submitError && (
+                <p className="text-[10px] text-amber max-w-xs text-right truncate" title={submitError}>
+                  ⚠ Escrow tx failed — arena added locally: {submitError}
+                </p>
+              )}
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="text-[12px] px-5 py-1.5 bg-purple hover:bg-purple/80 disabled:opacity-60 text-white rounded-lg font-medium transition-all"
+              >
+                {submitting ? '⏳ Depositing…' : 'Submit Arena'}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -880,10 +918,11 @@ function Step3Algorithm({
 }
 
 function Step4Review({
-  draft, taskConfig,
+  draft, taskConfig, estimatedCost,
 }: {
   draft: WizardDraft
   taskConfig: TaskConfig
+  estimatedCost: bigint
 }) {
   const [copied, setCopied] = useState(false)
   const json = JSON.stringify(taskConfig, null, 2)
@@ -894,13 +933,17 @@ function Step4Review({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const costDisplay = estimatedCost > 0n
+    ? `${formatEther(estimatedCost)} 0G`
+    : 'N/A (contracts not deployed)'
+
   const summary = [
     ['Arena',     draft.arenaName],
     ['Model',     draft.modelRef.split('/').pop() ?? draft.modelRef],
     ['Algorithm', draft.algorithm.toUpperCase()],
     ['Episodes',  String(draft.numEpisodes)],
     ['Gym',       draft.gymName || draft.gymHash.slice(0, 10) + '…'],
-    ['Judge',     draft.judgeModel.split('/').pop() ?? draft.judgeModel],
+    ['Cost',      costDisplay],
   ]
 
   return (

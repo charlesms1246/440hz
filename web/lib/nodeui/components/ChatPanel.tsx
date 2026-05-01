@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Bot, User, Loader2, Key, Sparkles, X } from 'lucide-react'
 import { useGraphStore } from '@nodeui/store/graphStore'
 import { AGENT_SYSTEM_PROMPT, CREATE_GRAPH_TOOL } from '@nodeui/utils/agentSystemPrompt'
+import { DEFAULT_COMPUTE_PROVIDER } from '@/lib/contracts'
 import type { AppNode, AppEdge } from '@nodeui/types/graph'
 
 type Provider = '0g' | 'openrouter' | 'groq'
@@ -20,12 +21,13 @@ export interface ChatMessage {
   isGraphBuild?: boolean
 }
 
-const PROVIDER_CONFIG: Record<Provider, { label: string; url: string; defaultModel: string; keyPlaceholder: string }> = {
+const PROVIDER_CONFIG: Record<Provider, { label: string; url: string; defaultModel: string; keyPlaceholder: string; brokerMode?: boolean }> = {
   '0g': {
     label: '0G Compute',
-    url: 'https://router-api.0g.ai/v1/chat/completions',
+    url: 'https://evmrpc-testnet.0g.ai',
     defaultModel: 'zai-org/GLM-5-FP8',
-    keyPlaceholder: 'sk-...',
+    keyPlaceholder: 'Provider address (default used if blank)',
+    brokerMode: true,
   },
   openrouter: {
     label: 'OpenRouter',
@@ -96,7 +98,10 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(storKey(provider, 'key')) ?? '')
   const [model, setModel] = useState(() => loadModel(provider))
   const [apiKeyInput, setApiKeyInput] = useState('')
-  const [showSettings, setShowSettings] = useState(() => !localStorage.getItem(storKey(provider, 'key')))
+  // For 0G broker mode: settings not required (wallet is used instead of API key)
+  const [showSettings, setShowSettings] = useState(
+    () => !PROVIDER_CONFIG[provider].brokerMode && !localStorage.getItem(storKey(provider, 'key'))
+  )
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? [])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -123,7 +128,7 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
     const savedModel = loadModel(p)
     setApiKey(savedKey)
     setModel(savedModel)
-    setShowSettings(!savedKey)
+    setShowSettings(!PROVIDER_CONFIG[p].brokerMode && !savedKey)
     setApiKeyInput('')
     setMessages([])
     setHistory([])
@@ -131,10 +136,12 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
 
   const saveSettings = () => {
     const key = apiKeyInput.trim()
-    if (!key) return
-    localStorage.setItem(storKey(provider, 'key'), key)
+    if (!cfg.brokerMode && !key) return
+    if (key) {
+      localStorage.setItem(storKey(provider, 'key'), key)
+      setApiKey(key)
+    }
     localStorage.setItem(storKey(provider, 'model'), model)
-    setApiKey(key)
     setShowSettings(false)
     setApiKeyInput('')
     setTimeout(() => inputRef.current?.focus(), 100)
@@ -147,7 +154,9 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
 
   const sendMessage = useCallback(async () => {
     const text = input.trim()
-    if (!text || loading || !apiKey) return
+    const isBroker = cfg.brokerMode
+    if (!text || loading) return
+    if (!isBroker && !apiKey) return
 
     setInput('')
     setLoading(true)
@@ -156,53 +165,100 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
 
     const newHistory: OaiMessage[] = [...history, { role: 'user', content: text }]
 
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...(provider === 'openrouter' ? { 'HTTP-Referer': 'https://440hz.ai', 'X-Title': '440hz NodeUI' } : {}),
-    }
-
     type ApiResponse = {
       choices?: { message: { content: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } }[]
       error?: { message: string; metadata?: { raw?: string } }
     }
 
-    const callApi = async (payload: object, retries = 1): Promise<ApiResponse> => {
-      const res = await fetch(cfg.url, { method: 'POST', headers, body: JSON.stringify(payload) })
-      const body = await res.text()
-
-      if (res.status === 429) throw new Error(`"${model}" is rate-limited. Click ⚙ → Reset model, or try:\n• openai/gpt-oss-20b:free\n• openai/gpt-oss-120b:free`)
-      if (res.status === 404) throw new Error(`Model "${model}" not found. Click ⚙ and use Reset model.`)
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${body}`)
-
-      const data: ApiResponse = JSON.parse(body)
-
-      // Upstream provider flakiness — auto-retry once before surfacing to user
-      if (data.error) {
-        const msg = data.error.message ?? 'Unknown error'
-        const raw = data.error.metadata?.raw
-        const isProviderErr = msg.toLowerCase().includes('provider') || raw != null
-        if (isProviderErr && retries > 0) {
-          await new Promise((r) => setTimeout(r, 1500))
-          return callApi(payload, retries - 1)
-        }
-        const detail = raw ? `\n\nUpstream: ${raw}` : ''
-        throw new Error(`${isProviderErr ? 'Provider error' : msg} (model: ${model})${detail}\n\nTry clicking ⚙ → Reset model or switch to Groq.`)
-      }
-      if (!data.choices?.length) throw new Error(`Unexpected response shape: ${body.slice(0, 200)}`)
-      return data
-    }
-
     try {
-      // First call: non-streaming so tool-call JSON is always complete
-      const data = await callApi({
-        model,
-        messages: [{ role: 'system', content: AGENT_SYSTEM_PROMPT }, ...newHistory],
-        tools: [CREATE_GRAPH_TOOL],
-        tool_choice: 'auto',
-        max_tokens: 4096,
-      })
-      const msg = data.choices![0].message
+      let firstData: ApiResponse
+      let streamUrl: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let streamHeaders: Record<string, string>
+      let activeModel = model
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let broker: any = null
+      let providerAddr = ''
+
+      if (isBroker) {
+        // ── 0G Compute broker path ────────────────────────────────
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (typeof window === 'undefined' || !(window as any).ethereum)
+          throw new Error('Connect a wallet to use 0G Compute.\n\nInstall MetaMask or another injected wallet, then reload.')
+
+        const { BrowserProvider } = await import('ethers')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { createZGComputeNetworkBroker } = await import('@0glabs/0g-serving-broker' as any)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ethProvider = new BrowserProvider((window as any).ethereum)
+        const signer = await ethProvider.getSigner()
+        broker = await createZGComputeNetworkBroker(signer)
+        providerAddr = apiKey.trim() || DEFAULT_COMPUTE_PROVIDER
+
+        const meta = await broker.inference.getServiceMetadata(providerAddr)
+        const brokerHeaders = await broker.inference.getRequestHeaders(providerAddr)
+        activeModel = meta.model as string
+        streamUrl = `${meta.endpoint}/chat/completions`
+        streamHeaders = { 'Content-Type': 'application/json', ...brokerHeaders as Record<string, string> }
+
+        const res = await fetch(streamUrl, {
+          method: 'POST',
+          headers: streamHeaders,
+          body: JSON.stringify({
+            model: activeModel,
+            messages: [{ role: 'system', content: AGENT_SYSTEM_PROMPT }, ...newHistory],
+            tools: [CREATE_GRAPH_TOOL],
+            tool_choice: 'auto',
+            max_tokens: 4096,
+          }),
+        })
+        const body = await res.text()
+        if (!res.ok) throw new Error(`0G ${res.status} ${res.statusText}: ${body}`)
+        firstData = JSON.parse(body) as ApiResponse
+        const chatID = res.headers.get('ZG-Res-Key') ?? res.headers.get('zg-res-key') ?? (firstData as { id?: string }).id ?? ''
+        await broker.inference.processResponse(providerAddr, chatID, JSON.stringify((firstData as { usage?: unknown }).usage ?? {}))
+      } else {
+        // ── Standard Bearer-token path (OpenRouter / Groq) ────────
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          ...(provider === 'openrouter' ? { 'HTTP-Referer': 'https://440hz.ai', 'X-Title': '440hz NodeUI' } : {}),
+        }
+        streamUrl = cfg.url
+        streamHeaders = headers
+
+        const callApi = async (payload: object, retries = 1): Promise<ApiResponse> => {
+          const res = await fetch(cfg.url, { method: 'POST', headers, body: JSON.stringify(payload) })
+          const body = await res.text()
+          if (res.status === 429) throw new Error(`"${model}" is rate-limited. Click ⚙ → Reset model, or try:\n• openai/gpt-oss-20b:free\n• openai/gpt-oss-120b:free`)
+          if (res.status === 404) throw new Error(`Model "${model}" not found. Click ⚙ and use Reset model.`)
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${body}`)
+          const data: ApiResponse = JSON.parse(body)
+          if (data.error) {
+            const msg = data.error.message ?? 'Unknown error'
+            const raw = data.error.metadata?.raw
+            const isProviderErr = msg.toLowerCase().includes('provider') || raw != null
+            if (isProviderErr && retries > 0) {
+              await new Promise((r) => setTimeout(r, 1500))
+              return callApi(payload, retries - 1)
+            }
+            const detail = raw ? `\n\nUpstream: ${raw}` : ''
+            throw new Error(`${isProviderErr ? 'Provider error' : msg} (model: ${model})${detail}\n\nTry clicking ⚙ → Reset model or switch to Groq.`)
+          }
+          if (!data.choices?.length) throw new Error(`Unexpected response shape: ${body.slice(0, 200)}`)
+          return data
+        }
+
+        firstData = await callApi({
+          model,
+          messages: [{ role: 'system', content: AGENT_SYSTEM_PROMPT }, ...newHistory],
+          tools: [CREATE_GRAPH_TOOL],
+          tool_choice: 'auto',
+          max_tokens: 4096,
+        })
+      }
+
+      const msg = firstData.choices![0].message
       const toolCall = msg?.tool_calls?.[0]
       let assistantText = msg?.content ?? ''
       let graphBuilt = false
@@ -222,20 +278,33 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
           { role: 'tool', tool_call_id: toolCall.id, name: toolCall.function.name, content: `Graph loaded: ${parsed.nodes.length} nodes, ${parsed.edges.length} edges.` },
         ]
         try {
-          const res2 = await fetch(cfg.url, {
-            method: 'POST', headers,
+          let res2Headers = streamHeaders
+          if (isBroker && broker) {
+            const h2 = await broker.inference.getRequestHeaders(providerAddr)
+            res2Headers = { 'Content-Type': 'application/json', ...h2 as Record<string, string> }
+          }
+          const res2 = await fetch(streamUrl, {
+            method: 'POST',
+            headers: res2Headers,
             body: JSON.stringify({
-              model, stream: true,
+              model: activeModel, stream: true,
               messages: [{ role: 'system', content: AGENT_SYSTEM_PROMPT }, ...toolHistory],
             }),
           })
           if (res2.ok && res2.body) {
             assistantText = ''
+            let streamChatID = res2.headers.get('ZG-Res-Key') ?? res2.headers.get('zg-res-key') ?? ''
+            let firstChunkId = ''
             for await (const chunk of streamSSE(res2)) {
+              if (!firstChunkId && chunk.id) firstChunkId = chunk.id as string
               const t = chunk.choices?.[0]?.delta?.content
               if (typeof t === 'string') { assistantText += t; setStreamText(assistantText) }
             }
             setStreamText('')
+            if (isBroker && broker) {
+              const sid = streamChatID || firstChunkId
+              if (sid) await broker.inference.processResponse(providerAddr, sid, JSON.stringify({}))
+            }
           } else {
             assistantText = `Graph built: ${parsed.nodes.length} nodes, ${parsed.edges.length} edges.`
           }
@@ -331,16 +400,21 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
       {/* Settings drawer */}
       {showSettings && (
         <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--nodeui-border-subtle)', background: 'var(--nodeui-canvas)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {cfg.brokerMode && (
+            <div style={{ fontSize: 10, color: '#10b981', background: '#10b98111', border: '1px solid #10b98133', borderRadius: 5, padding: '4px 8px' }}>
+              Uses wallet via 0G Compute broker — no API key required.
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: 'var(--nodeui-muted)', width: 32, flexShrink: 0 }}>Key</span>
+            <span style={{ fontSize: 10, color: 'var(--nodeui-muted)', width: 32, flexShrink: 0 }}>{cfg.brokerMode ? 'Addr' : 'Key'}</span>
             <input
-              type="password"
+              type={cfg.brokerMode ? 'text' : 'password'}
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && saveSettings()}
               placeholder={apiKey ? `Replace (${cfg.keyPlaceholder})` : cfg.keyPlaceholder}
               style={{ flex: 1, background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)', borderRadius: 5, padding: '4px 8px', fontSize: 11, color: 'var(--nodeui-text)', outline: 'none', fontFamily: 'monospace' }}
-              autoFocus
+              autoFocus={!cfg.brokerMode}
             />
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -353,21 +427,21 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
             />
           </div>
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-            <button onClick={resetModel} style={{ fontSize: 10, color: '#f59e0b', background: 'none', border: '1px solid #f59e0b33', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>
-              Reset model
-            </button>
-            <div style={{ flex: 1 }} />
-            {apiKey && (
-              <button onClick={() => { setShowSettings(false); setApiKeyInput('') }} style={{ color: 'var(--nodeui-dim)', background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
-                <X size={11} />
+            {!cfg.brokerMode && (
+              <button onClick={resetModel} style={{ fontSize: 10, color: '#f59e0b', background: 'none', border: '1px solid #f59e0b33', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Reset model
               </button>
             )}
+            <div style={{ flex: 1 }} />
+            <button onClick={() => { setShowSettings(false); setApiKeyInput('') }} style={{ color: 'var(--nodeui-dim)', background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
+              <X size={11} />
+            </button>
             <button
               onClick={saveSettings}
-              disabled={!apiKeyInput.trim()}
-              style={{ fontSize: 11, fontWeight: 600, color: 'var(--nodeui-canvas)', background: apiKeyInput.trim() ? '#6366f1' : 'var(--nodeui-border-strong)', border: 'none', borderRadius: 5, padding: '4px 12px', cursor: apiKeyInput.trim() ? 'pointer' : 'not-allowed' }}
+              disabled={!cfg.brokerMode && !apiKeyInput.trim()}
+              style={{ fontSize: 11, fontWeight: 600, color: 'var(--nodeui-canvas)', background: cfg.brokerMode || apiKeyInput.trim() ? '#6366f1' : 'var(--nodeui-border-strong)', border: 'none', borderRadius: 5, padding: '4px 12px', cursor: cfg.brokerMode || apiKeyInput.trim() ? 'pointer' : 'not-allowed' }}
             >
-              Save
+              {cfg.brokerMode ? 'Done' : 'Save'}
             </button>
           </div>
         </div>
@@ -445,7 +519,7 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
 
       {/* Input */}
       <div style={{ padding: '8px 10px', borderTop: '1px solid var(--nodeui-border-subtle)', display: 'flex', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
-        {!apiKey ? (
+        {(!apiKey && !cfg.brokerMode) ? (
           <span style={{ flex: 1, fontSize: 11, color: 'var(--nodeui-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <Key size={11} /> Set your API key above
           </span>
@@ -455,7 +529,7 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Describe your RL env… (Enter to send)"
+            placeholder={cfg.brokerMode ? 'Describe your RL env… (wallet required)' : 'Describe your RL env… (Enter to send)'}
             rows={2}
             disabled={loading}
             style={{ flex: 1, background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)', borderRadius: 7, padding: '6px 10px', fontSize: 11, color: 'var(--nodeui-text)', outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, opacity: loading ? 0.5 : 1 }}
@@ -465,10 +539,10 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
         )}
         <button
           onClick={sendMessage}
-          disabled={loading || !input.trim() || !apiKey}
-          style={{ width: 32, height: 32, borderRadius: 7, flexShrink: 0, background: !loading && input.trim() && apiKey ? '#6366f1' : 'var(--nodeui-node)', border: 'none', cursor: !loading && input.trim() && apiKey ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+          disabled={loading || !input.trim() || (!cfg.brokerMode && !apiKey)}
+          style={{ width: 32, height: 32, borderRadius: 7, flexShrink: 0, background: !loading && input.trim() && (cfg.brokerMode || apiKey) ? '#6366f1' : 'var(--nodeui-node)', border: 'none', cursor: !loading && input.trim() && (cfg.brokerMode || apiKey) ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
         >
-          {loading ? <Loader2 size={12} color="var(--nodeui-dim)" style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={12} color={input.trim() && apiKey ? '#fff' : 'var(--nodeui-dim)'} />}
+          {loading ? <Loader2 size={12} color="var(--nodeui-dim)" style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={12} color={input.trim() && (cfg.brokerMode || apiKey) ? '#fff' : 'var(--nodeui-dim)'} />}
         </button>
       </div>
 

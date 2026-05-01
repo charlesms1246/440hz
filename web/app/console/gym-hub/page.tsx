@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useGymStore, type GymEntry } from '@/lib/gymStore'
 import { downloadGymBundle } from '@/lib/utils/upload0g'
 import { fetchMarketListings, type MarketListing } from '@/lib/utils/kvMarketplace'
+import { contractPurchaseGym } from '@/lib/contracts'
 
 const categories = ['All', 'Coding', 'Trading', 'Physics', 'Robotics', 'Math', 'Language']
 
@@ -113,6 +114,11 @@ export default function GymHubPage() {
                     gym={gym}
                     isOwned={ownedCids.has(gym.rootHash)}
                     onDownload={async () => {
+                      // Record purchase on-chain (free gyms pass value 0n)
+                      const priceWei = gym.cost === 'Free'
+                        ? 0n
+                        : BigInt(Math.round(parseFloat(gym.cost) * 1e18))
+                      await contractPurchaseGym(gym.rootHash, priceWei)
                       const bundle = await downloadGymBundle(gym.rootHash)
                       addSavedGym({ rootHash: gym.rootHash, name: bundle.projectName || gym.name, savedAt: new Date().toISOString() })
                     }}

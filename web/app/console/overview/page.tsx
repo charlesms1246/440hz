@@ -1,6 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { useAccount } from "wagmi";
+import { formatEther } from "ethers";
 import { useProfileStore } from "@/lib/profileStore";
+import { contractPendingRoyalties, contractClaimRoyalties } from "@/lib/contracts";
 
 const sparkData = [
   28, 45, 32, 60, 48, 72, 55, 80, 63, 88, 71, 95, 78, 102, 85, 118, 92, 108, 97,
@@ -303,16 +307,61 @@ function TunerTable() {
 
 // ── Builder: gym royalties ─────────────────────────────────────
 function BuilderTable() {
+  const { address } = useAccount()
+  const [pendingWei, setPendingWei] = useState<bigint>(0n)
+  const [claiming, setClaiming] = useState(false)
+  const [claimError, setClaimError] = useState('')
+
+  useEffect(() => {
+    if (!address) return
+    contractPendingRoyalties(address)
+      .then(setPendingWei)
+      .catch(() => {})
+  }, [address])
+
+  async function handleClaim() {
+    setClaiming(true)
+    setClaimError('')
+    try {
+      await contractClaimRoyalties()
+      setPendingWei(0n)
+    } catch (e) {
+      setClaimError((e as Error).message)
+    } finally {
+      setClaiming(false)
+    }
+  }
+
+  const pendingDisplay = pendingWei > 0n
+    ? `${parseFloat(formatEther(pendingWei)).toFixed(4)} 0G`
+    : '—'
+
   return (
     <div className="bg-surface border border-border overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-white">
           Gym Royalty Dashboard
         </span>
-        <span className="text-[11px] text-green">
-          Total earned: <span className="font-mono">1,652.4 0G</span>
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-green">
+            Claimable: <span className="font-mono">{pendingDisplay}</span>
+          </span>
+          {pendingWei > 0n && (
+            <button
+              onClick={handleClaim}
+              disabled={claiming}
+              className="text-[10px] px-2.5 py-1 bg-green/20 hover:bg-green/30 text-green border border-green/30 disabled:opacity-50 transition-colors"
+            >
+              {claiming ? '…' : 'Claim'}
+            </button>
+          )}
+        </div>
       </div>
+      {claimError && (
+        <div className="px-4 py-2 text-[10px] text-amber border-b border-amber/20 bg-amber/5">
+          ⚠ {claimError}
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
