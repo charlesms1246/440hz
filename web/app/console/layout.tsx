@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/app/_components/ThemeToggle";
 
 const navItems = [
   { href: "/console/overview", label: "Overview", icon: GridIcon },
+  { href: "/console/search", label: "Search", icon: SearchIcon },
   { href: "/console/arenas", label: "Arenas", icon: ZapIcon },
   { href: "/console/models", label: "Models", icon: LayersIcon },
   { href: "/console/gym-hub", label: "Gym Hub", icon: StoreIcon },
@@ -33,8 +34,15 @@ export default function ConsoleLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { isConnected, address } = useAccount();
-  const { username, ensName, persona, onboardingComplete, setPersona } =
+  const { username, ensName, persona, onboardingComplete, profilePicture, save, setPersona } =
     useProfileStore();
+
+  // Hydrate profile from Redis when wallet connects
+  const { hydrate } = useProfileStore();
+  useEffect(() => {
+    if (isConnected && address) hydrate(address);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, address]);
 
   // Auth guard
   useEffect(() => {
@@ -49,8 +57,9 @@ export default function ConsoleLayout({
   );
 
   function cyclePersona() {
-    const idx = personaCycle.indexOf(persona);
-    setPersona(personaCycle[(idx + 1) % personaCycle.length]);
+    const next = personaCycle[(personaCycle.indexOf(persona) + 1) % personaCycle.length];
+    setPersona(next);
+    if (address) save(address, { persona: next }).catch(() => {});
   }
 
   return (
@@ -110,9 +119,13 @@ export default function ConsoleLayout({
           href="/console/settings"
           className="flex items-center gap-1.5 bg-surface-2 border-border hover:border-purple/40 px-2.5 py-1 transition-colors"
         >
-          <div className="w-4 h-4 bg-purple flex items-center justify-center text-[9px] font-bold">
-            {(ensName || username)?.[0]?.toUpperCase() ?? "U"}
-          </div>
+          {profilePicture ? (
+            <img src={profilePicture} alt="avatar" className="w-5 h-5 rounded-full object-cover" />
+          ) : (
+            <div className="w-4 h-4 bg-purple flex items-center justify-center text-[9px] font-bold">
+              {(ensName || username)?.[0]?.toUpperCase() ?? "U"}
+            </div>
+          )}
           {ensName ? (
             <span className="text-[11px] text-purple-300 max-w-[120px] truncate font-mono">
               {ensName}
@@ -304,6 +317,14 @@ function SettingsIcon() {
     >
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </svg>
+  );
+}
+function SearchIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
