@@ -114,11 +114,11 @@ export default function GymHubPage() {
                     gym={gym}
                     isOwned={ownedCids.has(gym.rootHash)}
                     onDownload={async () => {
-                      // Record purchase on-chain (free gyms pass value 0n)
-                      const priceWei = gym.cost === 'Free'
-                        ? 0n
-                        : BigInt(Math.round(parseFloat(gym.cost) * 1e18))
-                      await contractPurchaseGym(gym.rootHash, priceWei)
+                      // Only call the contract for paid gyms; free gyms are open-access on 0G Storage
+                      if (gym.cost !== 'Free') {
+                        const priceWei = BigInt(Math.round(parseFloat(gym.cost) * 1e18))
+                        await contractPurchaseGym(gym.rootHash, priceWei)
+                      }
                       const bundle = await downloadGymBundle(gym.rootHash)
                       addSavedGym({ rootHash: gym.rootHash, name: bundle.projectName || gym.name, savedAt: new Date().toISOString() })
                     }}
@@ -203,7 +203,10 @@ function OwnedCard({ gym }: { gym: GymEntry }) {
           {copied ? '✓ Copied' : 'Copy Hash'}
         </button>
         <button
-          onClick={() => router.push('/console/gym-builder')}
+          onClick={() => {
+            sessionStorage.setItem('440hz-open-gym-hash', gym.rootHash)
+            router.push('/console/gym-builder')
+          }}
           className="text-[11px] px-2.5 py-1.5 bg-purple/20 hover:bg-purple/30 text-purple-400 transition-colors flex-1"
         >
           Open →

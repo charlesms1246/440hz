@@ -329,6 +329,16 @@ export default function GymBuilderPage() {
     } catch { /* ignore quota errors */ }
   }, [chatMessages]);
 
+  // ── Effect 5: Auto-load gym when navigated from Gym Hub ──────
+  useEffect(() => {
+    const hash = sessionStorage.getItem('440hz-open-gym-hash')
+    if (hash) {
+      sessionStorage.removeItem('440hz-open-gym-hash')
+      handleOpen(hash)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── File handlers ──
   function handleFileSelect(name: string) {
     setOpenFiles((prev) => (prev.includes(name) ? prev : [...prev, name]));
