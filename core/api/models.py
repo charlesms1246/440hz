@@ -123,6 +123,9 @@ class OutputConfig(BaseModel):
 class TaskSubmitRequest(BaseModel):
     # Arena metadata (displayed in the arenas table).
     arena_name: str
+    # Pre-assigned task ID from the web UI (must match the jobId used in depositJob()).
+    # If omitted, the provider generates one — but then escrow jobId and settlement jobId diverge.
+    task_id: str | None = None
     # Injected as SYSTEM_PROMPT env var into the gym container.
     base_system_prompt: str | None = None
     # Wallet address of the job requester (for receipt attribution).

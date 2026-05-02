@@ -192,7 +192,7 @@ def _build_task_json(req: TaskSubmitRequest, task_id: str) -> dict:
 
 
 async def submit_task(req: TaskSubmitRequest) -> TaskStatus:
-    task_id = str(uuid.uuid4())
+    task_id = req.task_id if req.task_id else str(uuid.uuid4())
     now = time.time()
 
     task_dir = _STATE_DIR / "tasks" / task_id
@@ -374,6 +374,11 @@ def _finish_task(
     })
     _persist()
     log.info("Task %s finished: state=%s", task_id, state)
+
+    # Trigger on-chain settlement when training completes successfully.
+    if state == "completed":
+        from . import settlement
+        asyncio.create_task(settlement.settle_job(task_id))
 
 
 # ---------------------------------------------------------------------------
