@@ -147,10 +147,11 @@ export async function contractDepositJob(
   provider: string,
   gymRootHash: string,
   value: bigint,
-): Promise<void> {
+): Promise<string> {
   if (!isDeployed(16602)) throw new Error('TrainingEscrow not deployed — run ignition deploy first')
   const signer = await getSigner()
   const contract = new Contract(CONTRACT_ADDRESSES[16602].TrainingEscrow, ESCROW_ABI, signer)
   const tx = await contract.depositJob(getJobIdKey(taskId), provider, getRootHashKey(gymRootHash), { value })
   await tx.wait()
+  return tx.hash as string
 }
