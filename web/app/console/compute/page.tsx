@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-
-const PROVIDER_API =
-  process.env.NEXT_PUBLIC_PROVIDER_API_URL ?? "http://localhost:8420";
+import { providerFetch, providerEventSource } from "@/lib/utils/providerApi";
 
 // ── Types mirroring core/api/models.py ───────────────────────────────────────
 
@@ -141,7 +139,7 @@ export default function ComputePage() {
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch(`${PROVIDER_API}/health`);
+        const res = await providerFetch(`/health`);
         if (res.ok) setApiOnline(true);
       } catch {
         setApiOnline(false);
@@ -154,11 +152,11 @@ export default function ComputePage() {
 
   useEffect(() => {
     if (!apiOnline) return;
-    fetch(`${PROVIDER_API}/provider/info`)
+    providerFetch(`/provider/info`)
       .then((r) => r.json())
       .then(setProviderInfo)
       .catch(() => {});
-    fetch(`${PROVIDER_API}/tasks`)
+    providerFetch(`/tasks`)
       .then((r) => r.json())
       .then((tasks: TaskStatus[]) => {
         setActiveTasks(tasks);
@@ -172,7 +170,7 @@ export default function ComputePage() {
   useEffect(() => {
     if (!apiOnline) return;
     const poll = () => {
-      fetch(`${PROVIDER_API}/metrics`)
+      providerFetch(`/metrics`)
         .then((r) => r.json())
         .then(setMetrics)
         .catch(() => {});
@@ -185,7 +183,7 @@ export default function ComputePage() {
   // ── SSE: task log stream ─────────────────────────────────────────────────
   useEffect(() => {
     if (!apiOnline || !activeTaskId) return;
-    const es = new EventSource(`${PROVIDER_API}/tasks/${activeTaskId}/logs`);
+    const es = providerEventSource(`/tasks/${activeTaskId}/logs`);
     es.onmessage = (evt) => {
       try {
         const entry: LogEntry = JSON.parse(evt.data);
@@ -202,7 +200,7 @@ export default function ComputePage() {
   // ── SSE: global DA stream (when no task selected) ────────────────────────
   useEffect(() => {
     if (!apiOnline || activeTaskId) return;
-    const es = new EventSource(`${PROVIDER_API}/da/stream`);
+    const es = providerEventSource(`/da/stream`);
     es.onmessage = (evt) => {
       try {
         const entry: LogEntry = JSON.parse(evt.data);
@@ -260,8 +258,8 @@ export default function ComputePage() {
                 onClick={async () => {
                   setRegistering(true);
                   try {
-                    await fetch(`${PROVIDER_API}/provider/register`, { method: "POST" });
-                    const info = await fetch(`${PROVIDER_API}/provider/info`).then((r) => r.json());
+                    await providerFetch(`/provider/register`, { method: "POST" });
+                    const info = await providerFetch(`/provider/info`).then((r) => r.json());
                     setProviderInfo(info);
                   } finally {
                     setRegistering(false);

@@ -9,7 +9,7 @@ import {
   DEFAULT_COMPUTE_PROVIDER,
 } from '@/lib/contracts'
 
-const PROVIDER_API = process.env.NEXT_PUBLIC_PROVIDER_API_URL ?? 'http://localhost:8420'
+import { PROVIDER_API, providerFetch } from '@/lib/utils/providerApi'
 import {
   ReactFlow, Background, Controls, MiniMap, addEdge,
   useNodesState, useEdgesState, type Connection, type Node, type NodeTypes,
@@ -616,7 +616,7 @@ function NewArenaWizard({
     // 1. Resolve provider address from running daemon (fall back to hardcoded)
     let providerAddress = DEFAULT_COMPUTE_PROVIDER
     try {
-      const info = await fetch(`${PROVIDER_API}/provider/info`).then(r => r.json())
+      const info = await providerFetch(`/provider/info`).then(r => r.json())
       if (info?.address) providerAddress = info.address
     } catch { /* offline — use default */ }
 
@@ -680,7 +680,7 @@ function NewArenaWizard({
           escrow_amount_og: Number(formatEther(estimatedCost || 0n)),
         },
       }
-      const res = await fetch(`${PROVIDER_API}/tasks`, {
+      const res = await providerFetch(`/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

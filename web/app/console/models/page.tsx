@@ -3,9 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { downloadAdapterFromStorage } from "@/lib/utils/download0g";
 import { registerSubname, buildEnsName } from "@/lib/utils/ensSubname";
-
-const PROVIDER_API =
-  process.env.NEXT_PUBLIC_PROVIDER_API_URL ?? "http://localhost:8420";
+import { PROVIDER_API, providerFetch } from "@/lib/utils/providerApi";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +15,7 @@ type TaskReceipt = {
   final_episode_steps?: number;
   started_at?: number;
   finished_at?: number;
+  merged_model_ref?: string;
 };
 
 type ApiTask = {
@@ -42,6 +41,7 @@ type ModelRow = {
   elapsedHours: number | null;
   createdAt: string;
   gymImage: string | null;
+  mergedRef: string | null;
 };
 
 function toRow(t: ApiTask): ModelRow {
@@ -59,6 +59,7 @@ function toRow(t: ApiTask): ModelRow {
       t.elapsed_seconds != null ? t.elapsed_seconds / 3600 : null,
     createdAt: new Date(t.created_at * 1000).toISOString().split("T")[0],
     gymImage: t.receipt?.gym_image ?? null,
+    mergedRef: t.receipt?.merged_model_ref ?? null,
   };
 }
 
@@ -74,10 +75,13 @@ export default function ModelsPage() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [weightsEnsName, setWeightsEnsName] = useState<string | null>(null);
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const [mergeRef, setMergeRef] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await fetch(`${PROVIDER_API}/tasks`, {
+      const res = await providerFetch(`/tasks`, {
         signal: AbortSignal.timeout(4000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -142,6 +146,37 @@ export default function ModelsPage() {
       setExportError(e instanceof Error ? e.message : "Download failed");
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleMerge() {
+    if (!selected?.isOnChain) return;
+    setMerging(true);
+    setMergeError(null);
+    setMergeRef(null);
+    try {
+      const res = await providerFetch(`/tasks/${selected.id}/merge`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Merge request failed" }));
+        throw new Error(err.detail ?? "Merge request failed");
+      }
+      // Poll until merged_model_ref appears (up to 10 minutes)
+      for (let i = 0; i < 300; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const poll = await providerFetch(`/tasks/${selected.id}`);
+        if (!poll.ok) continue;
+        const task: ApiTask & { merged_model_ref?: string } = await poll.json();
+        if (task.merged_model_ref) {
+          setMergeRef(task.merged_model_ref);
+          fetchTasks();
+          return;
+        }
+      }
+      throw new Error("Merge timed out after 10 minutes");
+    } catch (e) {
+      setMergeError(e instanceof Error ? e.message : "Merge failed");
+    } finally {
+      setMerging(false);
     }
   }
 
@@ -400,6 +435,20 @@ export default function ModelsPage() {
               </div>
             )}
 
+            {/* Merged model ref */}
+            {(mergeRef || selected.mergedRef) && (
+              <div className="text-[11px] text-green bg-green/10 border border-green/20 px-3 py-2 font-mono truncate" title={mergeRef ?? selected.mergedRef ?? ""}>
+                ✓ Merged: {(mergeRef ?? selected.mergedRef ?? "").slice(0, 22)}…
+              </div>
+            )}
+
+            {/* Merge error */}
+            {mergeError && (
+              <div className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 px-3 py-2">
+                {mergeError}
+              </div>
+            )}
+
             {/* Actions */}
             <div className="space-y-2 pt-2">
               <button
@@ -414,10 +463,11 @@ export default function ModelsPage() {
                   : "Export LoRA Weights (local only)"}
               </button>
               <button
-                disabled
-                className="w-full text-[12px] py-1.5 border border-border text-muted opacity-40 cursor-not-allowed"
+                onClick={handleMerge}
+                disabled={!selected.isOnChain || merging}
+                className="w-full text-[12px] py-1.5 border border-purple/40 text-purple-300 hover:bg-purple/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Merge Weights
+                {merging ? "Merging weights…" : mergeRef || selected.mergedRef ? "✓ Merged — Merge Again" : "Merge Weights"}
               </button>
               <button
                 disabled
