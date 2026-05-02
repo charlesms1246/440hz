@@ -14,11 +14,17 @@ download. Subprocess call overhead is irrelevant compared to download time.
 """
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 import shutil
+import socket
 import subprocess
+import sys
 import tarfile
+import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -100,42 +106,118 @@ def _fetch_from_0g_storage(root_hash: str, dest: Path) -> str:
 # Gym image fetch
 # ---------------------------------------------------------------------------
 
-def fetch_gym_image(image_ref: str, root_hash: Optional[str]) -> str:
+def fetch_gym_image(image_ref: str, root_hash: Optional[str], gym_env: Optional[dict] = None) -> Optional[str]:
     """
-    Resolve a gym image_ref into a docker-loadable image tag.
+    Resolve a gym image_ref into a docker-loadable image tag, OR launch a
+    Python source gym subprocess and return None (caller uses GYM_OVERRIDE_URL).
 
-    - Refs starting with `0g://` are pulled from 0G Storage as a tarball
-      produced by `docker save`, loaded into the local docker daemon, and the
-      resolved tag is returned.
-    - Anything else is treated as a registry ref and `docker pull`-ed.
+    - `0g://` refs are downloaded from 0G Storage. If the file is a 440hz gym
+      bundle (JSON with `version`, `files`, `graph`), it's run as a Python
+      subprocess and GYM_OVERRIDE_URL is set in the environment. Otherwise it's
+      treated as a Docker tarball (`docker load`).
+    - Any other ref is `docker pull`-ed from a registry.
     """
     if image_ref.startswith("0g://"):
         if not root_hash:
             root_hash = image_ref.removeprefix("0g://")
-        return _load_image_from_0g(root_hash)
+        raw = _download_raw_from_0g(root_hash)
+        if _is_gym_bundle(raw):
+            port = _find_free_port()
+            _launch_source_gym(raw, port, env=gym_env or {})
+            os.environ["GYM_OVERRIDE_URL"] = f"http://localhost:{port}"
+            log.info("Python source gym launched on port %d", port)
+            return None  # orchestrator uses GYM_OVERRIDE_URL path
+        return _load_docker_tarball(raw)
 
     log.info("Pulling gym image from registry: %s", image_ref)
     _run(["docker", "pull", image_ref])
     return image_ref
 
 
-def _load_image_from_0g(root_hash: str) -> str:
-    """Download a docker image tarball from 0G Storage and load it."""
-    log.info("Fetching gym image tarball from 0G Storage: %s", root_hash)
-    tmp = Path("/tmp/440hz-gym-image.tar")
-    cmd = [
+def _download_raw_from_0g(root_hash: str) -> bytes:
+    """Download a file from 0G Storage by root hash, return raw bytes."""
+    log.info("Downloading from 0G Storage: %s", root_hash)
+    tmp = Path(tempfile.mktemp(prefix="440hz-0g-"))
+    _run([
         "0g-compute-cli", "fine-tuning", "download",
         "--data-path", str(tmp),
         "--data-root", root_hash,
-    ]
-    _run(cmd)
+    ])
+    data = tmp.read_bytes()
+    tmp.unlink(missing_ok=True)
+    return data
 
-    # `docker load` prints "Loaded image: <tag>" — capture the tag.
+
+def _is_gym_bundle(data: bytes) -> bool:
+    """Return True if data looks like a 440hz gym bundle (JSON with version+files+graph)."""
+    try:
+        obj = json.loads(data[:8192])
+        return obj.get("version") == "1.0" and "files" in obj and "graph" in obj
+    except Exception:
+        return False
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _launch_source_gym(data: bytes, port: int, env: dict) -> subprocess.Popen:
+    """
+    Extract a 440hz gym bundle, pip-install its requirements, run the gym server.
+    The subprocess inherits the current environment plus the supplied env vars.
+    """
+    bundle = json.loads(data)
+    tmpdir = Path(tempfile.mkdtemp(prefix="440hz-gym-src-"))
+    log.info("Extracting gym source to %s", tmpdir)
+
+    for name, b64_content in bundle["files"].items():
+        dest = tmpdir / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(base64.b64decode(b64_content))
+
+    req_file = tmpdir / "requirements.txt"
+    if req_file.exists():
+        log.info("Installing gym requirements from %s", req_file)
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "-r", str(req_file)],
+            check=True,
+        )
+
+    proc_env = {**os.environ, **env, "GYM_PORT": str(port)}
+    proc = subprocess.Popen(
+        [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, '{tmpdir}'); "
+         f"from gym_env import GymEnv; from gym_sdk import serve; serve(GymEnv, port={port})"],
+        cwd=str(tmpdir),
+        env=proc_env,
+    )
+
+    # Wait for gym to be ready (up to 60 seconds)
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
+                break
+        except OSError:
+            time.sleep(0.5)
+    else:
+        proc.terminate()
+        raise StorageError(f"Source gym did not become ready on port {port} within 60s")
+
+    return proc
+
+
+def _load_docker_tarball(data: bytes) -> str:
+    """Load a Docker image tarball, return the image tag."""
+    tmp = Path(tempfile.mktemp(suffix=".tar", prefix="440hz-gym-img-"))
+    tmp.write_bytes(data)
     res = subprocess.run(
         ["docker", "load", "-i", str(tmp)],
         capture_output=True, text=True, check=True,
     )
-    tmp.unlink()
+    tmp.unlink(missing_ok=True)
     for line in res.stdout.splitlines():
         if line.startswith("Loaded image:"):
             return line.split(":", 1)[1].strip()

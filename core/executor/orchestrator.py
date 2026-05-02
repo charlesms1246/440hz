@@ -141,28 +141,31 @@ def main() -> int:
             _emit({"type": "status", "stage": "gym_override", "url": gym_override})
             gym_base_url = gym_override
         else:
-            log.info("=== Stage 2/5: launch gym container ===")
+            log.info("=== Stage 2/5: launch gym ===")
             _emit({"type": "status", "stage": "fetching_gym", "image": task.gym.image_ref})
-            gym_image = fetch_gym_image(task.gym.image_ref, task.gym.root_hash)
-            host_port = _free_port()
-            gym_container_cm = GymContainer(
-                image=gym_image,
-                host_port=host_port,
-                container_port=task.gym.port,
-                cpu_limit=task.gym.cpu_limit,
-                memory_limit=task.gym.memory_limit,
-                env=task.gym.env,
-            )
-            gym_base_url = gym_container_cm.base_url  # set by .start()
+            gym_image = fetch_gym_image(task.gym.image_ref, task.gym.root_hash, gym_env=task.gym.env)
+
+            # fetch_gym_image returns None when a Python source gym was launched
+            # as a subprocess — it sets GYM_OVERRIDE_URL in the environment.
+            gym_override = os.environ.get("GYM_OVERRIDE_URL")
+            if gym_image is None:
+                log.info("Source gym subprocess launched, using override URL: %s", gym_override)
+                _emit({"type": "status", "stage": "gym_override", "url": gym_override})
+                gym_base_url = gym_override
+            else:
+                host_port = _free_port()
+                gym_container_cm = GymContainer(
+                    image=gym_image,
+                    host_port=host_port,
+                    container_port=task.gym.port,
+                    cpu_limit=task.gym.cpu_limit,
+                    memory_limit=task.gym.memory_limit,
+                    env=task.gym.env,
+                )
+                gym_base_url = gym_container_cm.base_url  # set by .start()
 
         with gym_container_cm:
-            # When using container_cm.start() the base_url is set after start.
-            # The override case is already set above. Re-read it here either way.
-            url_for_client = (
-                gym_override
-                if gym_override
-                else gym_container_cm.base_url
-            )
+            url_for_client = gym_override or gym_container_cm.base_url
             with GymClient(url_for_client) as gym_client:
                 gym_client.wait_until_healthy(timeout=60.0)
                 spec = gym_client.spec()
