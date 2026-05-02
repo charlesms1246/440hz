@@ -2,11 +2,14 @@
 
 import { useState, useCallback, useEffect, type ReactNode } from 'react'
 import { formatEther } from 'ethers'
+import { useAccount } from 'wagmi'
 import {
   contractEstimateCost,
   contractDepositJob,
   DEFAULT_COMPUTE_PROVIDER,
 } from '@/lib/contracts'
+
+const PROVIDER_API = process.env.NEXT_PUBLIC_PROVIDER_API_URL ?? 'http://localhost:8420'
 import {
   ReactFlow, Background, Controls, MiniMap, addEdge,
   useNodesState, useEdgesState, type Connection, type Node, type NodeTypes,
@@ -42,6 +45,12 @@ interface TaskConfig {
   metadata: { submitted_by: string; notes: string }
 }
 
+interface DataConnector {
+  label: string
+  uri: string
+  mountEnv: string
+}
+
 interface WizardDraft {
   arenaName: string
   modelRef: string
@@ -59,6 +68,7 @@ interface WizardDraft {
   batchSize: number
   maxNewTokens: number
   klCoef: string
+  connectors: DataConnector[]
 }
 
 // ── Constants ──────────────────────────────────────────────────
@@ -88,6 +98,7 @@ const DRAFT_DEFAULTS: WizardDraft = {
   batchSize: 1,
   maxNewTokens: 128,
   klCoef: '0.04',
+  connectors: [],
 }
 
 const POPULAR_MODELS = [
@@ -535,6 +546,7 @@ function NewArenaWizard({
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const { savedGyms } = useGymStore()
+  const { address: walletAddress } = useAccount()
 
   useEffect(() => {
     if (step !== 4) return
@@ -600,17 +612,87 @@ function NewArenaWizard({
     setSubmitting(true)
     setSubmitError('')
     const task = buildTask()
+
+    // 1. Resolve provider address from running daemon (fall back to hardcoded)
+    let providerAddress = DEFAULT_COMPUTE_PROVIDER
     try {
-      await contractDepositJob(
-        task.task_id,
-        DEFAULT_COMPUTE_PROVIDER,
-        draft.gymHash,
-        estimatedCost,
-      )
+      const info = await fetch(`${PROVIDER_API}/provider/info`).then(r => r.json())
+      if (info?.address) providerAddress = info.address
+    } catch { /* offline — use default */ }
+
+    // 2. Lock escrow on-chain (non-blocking: training still submitted if tx fails)
+    let escrowTxHash = ''
+    try {
+      escrowTxHash = await contractDepositJob(task.task_id, providerAddress, draft.gymHash, estimatedCost)
     } catch (e) {
-      // Non-blocking: arena is added to local state even if escrow tx fails
-      setSubmitError((e as Error).message)
+      setSubmitError(`Escrow tx failed: ${(e as Error).message}`)
     }
+
+    // 3. POST job to provider API
+    try {
+      const body = {
+        arena_name: draft.arenaName,
+        submitter_address: walletAddress ?? '0x0000000000000000000000000000000000000000',
+        base_model: {
+          source: 'huggingface',
+          ref: draft.modelRef,
+          quantization: draft.quantization,
+          dtype: draft.dtype,
+          root_hash: null,
+        },
+        gym: { root_hash: draft.gymHash, port: 8080, cpu_limit: 2.0, memory_limit: '4g', env: {} },
+        overseer: {
+          type: 'openai_compatible',
+          base_url: draft.judgeBaseUrl,
+          model: draft.judgeModel,
+          api_key: null,
+          rubric: draft.rubric,
+          scoring_mode: 'per_step',
+        },
+        algorithm: {
+          name: draft.algorithm,
+          num_episodes: draft.numEpisodes,
+          learning_rate: parseFloat(draft.learningRate) || 2e-5,
+          lora_rank: draft.loraRank,
+          lora_alpha: draft.loraRank * 2,
+          lora_dropout: 0.05,
+          target_modules: ['q_proj', 'k_proj', 'v_proj', 'o_proj'],
+          max_new_tokens: draft.maxNewTokens,
+          temperature: 0.9,
+          top_p: 0.95,
+          kl_coef: parseFloat(draft.klCoef) || 0.04,
+          batch_size: draft.batchSize,
+          grad_accum_steps: 4,
+          group_size: 4,
+          save_every: Math.max(10, Math.floor(draft.numEpisodes / 4)),
+        },
+        output: { destination: '0g_storage', encryption_pubkey: null, local_path: null },
+        external_connectors: draft.connectors.map(c => ({
+          type: 'https',
+          label: c.label,
+          uri: c.uri,
+          mount_env: c.mountEnv || null,
+        })),
+        runtime: {
+          max_runtime_seconds: 7200,
+          estimated_cost_og: Number(formatEther(estimatedCost || 0n)),
+          escrow_tx_hash: escrowTxHash || '0x0',
+          escrow_amount_og: Number(formatEther(estimatedCost || 0n)),
+        },
+      }
+      const res = await fetch(`${PROVIDER_API}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setSubmitError(`Provider error: ${err.detail ?? res.status}`)
+      }
+    } catch (e) {
+      if (!submitError) setSubmitError(`Provider unreachable: ${(e as Error).message}`)
+    }
+
     setSubmitting(false)
     onSubmit({
       id: `ARN-${String(Date.now()).slice(-4)}`,
@@ -627,7 +709,7 @@ function NewArenaWizard({
     })
   }
 
-  const STEPS = ['Base Model', 'Gym & Judge', 'Algorithm', 'Review']
+  const STEPS = ['Base Model', 'Gym & Data', 'Algorithm', 'Review']
 
   return (
     <div
@@ -865,6 +947,54 @@ function Step2Gym({
             />
           </Field>
         </div>
+      </div>
+
+      {/* Data Sources — URIs the gym accesses at runtime; raw data never leaves your infrastructure */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <label className="text-[11px] text-muted">Data Sources <span className="text-muted/50">(optional)</span></label>
+            <p className="text-[10px] text-muted/50 mt-0.5">URIs passed to the gym as env vars — your data stays on-premises</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => set('connectors', [...draft.connectors, { label: '', uri: '', mountEnv: '' }])}
+            className="text-[11px] border border-border text-muted hover:text-white px-2 py-0.5 transition-colors"
+          >
+            + Add source
+          </button>
+        </div>
+        {draft.connectors.length > 0 && (
+          <div className="space-y-2">
+            {draft.connectors.map((c, i) => (
+              <div key={i} className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center">
+                <input
+                  value={c.label}
+                  onChange={e => set('connectors', draft.connectors.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                  placeholder="Label"
+                  className={inputCls()}
+                />
+                <input
+                  value={c.uri}
+                  onChange={e => set('connectors', draft.connectors.map((x, j) => j === i ? { ...x, uri: e.target.value } : x))}
+                  placeholder="https://… or 0x…"
+                  className={inputCls()}
+                />
+                <input
+                  value={c.mountEnv}
+                  onChange={e => set('connectors', draft.connectors.map((x, j) => j === i ? { ...x, mountEnv: e.target.value } : x))}
+                  placeholder="ENV_VAR"
+                  className={inputCls()}
+                />
+                <button
+                  type="button"
+                  onClick={() => set('connectors', draft.connectors.filter((_, j) => j !== i))}
+                  className="text-muted hover:text-signal-red text-[13px] leading-none"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

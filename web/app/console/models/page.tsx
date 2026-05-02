@@ -24,7 +24,7 @@ type ApiTask = {
   arena_name: string;
   submitter_address: string;
   state: "pending" | "running" | "completed" | "failed" | "cancelled";
-  created_at: string;
+  created_at: number;
   elapsed_seconds: number | null;
   receipt: TaskReceipt | null;
   error: string | null;
@@ -57,7 +57,7 @@ function toRow(t: ApiTask): ModelRow {
     episodes: t.receipt?.final_episode_steps ?? null,
     elapsedHours:
       t.elapsed_seconds != null ? t.elapsed_seconds / 3600 : null,
-    createdAt: t.created_at.split("T")[0],
+    createdAt: new Date(t.created_at * 1000).toISOString().split("T")[0],
     gymImage: t.receipt?.gym_image ?? null,
   };
 }
