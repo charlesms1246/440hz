@@ -7,7 +7,8 @@ import { useProfileStore, type Persona } from "@/lib/profileStore";
 import { zeroGGalileo } from "@/lib/wagmi";
 import { Logo440hz } from "@/app/_components/Logo440hz";
 import { ThemeToggle } from "@/app/_components/ThemeToggle";
-import { registerSubname, buildEnsName } from "@/lib/utils/ensSubname";
+import { registerSubname, buildEnsName, setEnsAvatarRecord } from "@/lib/utils/ensSubname";
+import { uploadProfilePicture } from "@/lib/utils/upload0g";
 
 const personas: { id: Persona; label: string; icon: string; desc: string }[] = [
   {
@@ -39,12 +40,18 @@ export default function OnboardingPage() {
 
   const {
     username,
+    ensName,
     persona,
     onboardingComplete,
+    walletAddress,
     setUsername,
     setEnsName,
     setPersona,
     completeOnboarding,
+    setWalletAddress,
+    setProfilePicture: saveProfilePicture,
+    setProfilePictureHash,
+    reset,
   } = useProfileStore();
 
   const [step, setStep] = useState(0);
@@ -66,6 +73,13 @@ export default function OnboardingPage() {
     if (isConnected && step === 0) setStep(1);
   }, [isConnected, step]);
 
+  // Reset profile when a different wallet connects
+  useEffect(() => {
+    if (address && walletAddress && address.toLowerCase() !== walletAddress.toLowerCase()) {
+      reset();
+    }
+  }, [address, walletAddress, reset]);
+
   const wrongChain = isConnected && chainId !== zeroGGalileo.id;
 
   function handleNameNext() {
@@ -85,32 +99,50 @@ export default function OnboardingPage() {
 
   async function handleFinish() {
     setChecking(true);
-    // Network provisioning: ping 0G DA endpoint
+    // Ping 0G DA endpoint
     try {
       await fetch("https://evmrpc-testnet.0g.ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "net_version",
-          params: [],
-          id: 1,
-        }),
+        body: JSON.stringify({ jsonrpc: "2.0", method: "net_version", params: [], id: 1 }),
       });
       setNetworkOk(true);
     } catch {
       setNetworkOk(false);
     }
-    // Register username.440hz.eth subname on Base Sepolia
-    if (address && username) {
+
+    let resolvedEnsName = ensName;
+
+    // Only register if not already registered for this wallet
+    if (address && username && !ensName) {
       try {
-        const ensName = await registerSubname(username, 'user', address);
-        setEnsName(ensName);
+        resolvedEnsName = await registerSubname(username, 'user', address);
+        setEnsName(resolvedEnsName);
       } catch {
-        // Best-effort — store the expected name even if tx fails
-        setEnsName(buildEnsName(username, 'user'));
+        resolvedEnsName = buildEnsName(username, 'user');
+        setEnsName(resolvedEnsName);
       }
     }
+
+    // Upload profile picture to 0G Storage and set ENS avatar record
+    if (profilePicture) {
+      try {
+        const rootHash = await uploadProfilePicture(profilePicture);
+        setProfilePictureHash(rootHash);
+        if (username) {
+          try {
+            await setEnsAvatarRecord(username, 'user', rootHash);
+          } catch {
+            // Best-effort — avatar record is non-critical
+          }
+        }
+      } catch {
+        // Upload failure is non-critical
+      }
+    }
+
+    saveProfilePicture(profilePicture ?? '');
+    if (address) setWalletAddress(address);
     completeOnboarding();
     setChecking(false);
     router.push("/console/overview");
@@ -560,6 +592,11 @@ export default function OnboardingPage() {
                     }}
                   >
                     {nameError}
+                  </p>
+                )}
+                {!nameError && inputName.trim().length >= 3 && (
+                  <p style={{ fontSize: "0.8vw", color: "var(--color-muted)", fontFamily: "monospace" }}>
+                    → {buildEnsName(inputName.trim(), "user")}
                   </p>
                 )}
               </div>

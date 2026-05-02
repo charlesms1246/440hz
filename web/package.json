@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:0g-kv": "node scripts/test-0g-kv.js"
   },
   "dependencies": {
     "@0gfoundation/0g-ts-sdk": "^1.2.6",
