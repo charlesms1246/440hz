@@ -2,6 +2,7 @@
 
 import { MemData, Indexer } from '@0gfoundation/0g-ts-sdk'
 import { BrowserProvider } from 'ethers'
+import type { VersionManifest } from '@/lib/gymStore'
 
 const INDEXER_URL = 'https://indexer-storage-testnet-turbo.0g.ai'
 const EVM_RPC = 'https://evmrpc-testnet.0g.ai'
@@ -92,6 +93,43 @@ function decodeFiles(files: Record<string, string>): Record<string, string> {
 export async function uploadGymBundle(bundle: GymBundle): Promise<string> {
   const wire = { ...bundle, files: encodeFiles(bundle.files) }
   return uploadBytes(new TextEncoder().encode(JSON.stringify(wire)))
+}
+
+// ── Public: SHA-256 fingerprint of wire bytes (no wallet needed) ─
+// Used for change detection: if hash matches the last saved contentHash,
+// skip the upload entirely.
+
+export async function computeBundleHash(bundle: GymBundle): Promise<string> {
+  const wire = { ...bundle, files: encodeFiles(bundle.files) }
+  const bytes = new TextEncoder().encode(JSON.stringify(wire))
+  const buf = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+// ── Public: upload version manifest JSON to 0G Storage ──────────
+
+export async function uploadVersionManifest(manifest: VersionManifest): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(manifest))
+  return uploadBytes(bytes)
+}
+
+// ── Public: download version manifest by root hash ───────────────
+
+export async function downloadVersionManifest(rootHash: string): Promise<VersionManifest> {
+  const indexer = new Indexer(INDEXER_URL)
+  const [blob, err] = await indexer.downloadToBlob(rootHash)
+  if (err) throw new Error(`0G download failed: ${err}`)
+
+  const text = await blob.text()
+  const parsed = JSON.parse(text) as VersionManifest
+
+  if (parsed.schemaVersion !== '1' || !Array.isArray(parsed.versions)) {
+    throw new Error('Downloaded data is not a valid 440hz version manifest')
+  }
+
+  return parsed
 }
 
 // ── Public: upload profile picture (base64 data URL) ─────────────

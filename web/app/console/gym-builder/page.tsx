@@ -16,12 +16,16 @@ import { generateConfigAndRequirements } from "@/lib/nodeui/utils/codegen/genera
 import {
   uploadGymBundle,
   downloadGymBundle,
+  computeBundleHash,
+  uploadVersionManifest,
   type GymBundle,
 } from "@/lib/utils/upload0g";
-import { useGymStore } from "@/lib/gymStore";
+import { useGymStore, type VersionEntry } from "@/lib/gymStore";
+import type { VersionManifest } from "@/lib/gymStore";
 import { publishGymListing, type MarketListing } from "@/lib/utils/kvMarketplace";
 import { contractListGym } from "@/lib/contracts";
-import { registerSubname, buildEnsName } from "@/lib/utils/ensSubname";
+import { registerSubname, buildEnsName, slugify, setEnsTextRecord } from "@/lib/utils/ensSubname";
+import { VersionHistoryPanel } from "./VersionHistoryPanel";
 
 const MonacoEditor = dynamic(() => import("./_MonacoEditor"), { ssr: false });
 
@@ -208,6 +212,12 @@ export default function GymBuilderPage() {
 
   // ── Save state ──
   const [saving, setSaving] = useState(false);
+  const [versionMessage, setVersionMessage] = useState('');
+  const [versionPanelOpen, setVersionPanelOpen] = useState(false);
+  const [versionHistory, setVersionHistory] = useState<VersionEntry[]>([]);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [manifestError, setManifestError] = useState<string | null>(null);
+  const [noChanges, setNoChanges] = useState(false);
 
   // ── Open modal state ──
   const [openModalVisible, setOpenModalVisible] = useState(false);
@@ -229,6 +239,7 @@ export default function GymBuilderPage() {
     currentGymHash,
     savedGyms,
     removeSavedGym,
+    updateGymEntry,
   } = useGymStore();
 
   // ── File state ──
@@ -368,6 +379,8 @@ export default function GymBuilderPage() {
   ): Promise<string | null> {
     setSaving(true);
     setUploadError(null);
+    setManifestError(null);
+    setNoChanges(false);
 
     const { nodes, edges, projectName: name } = useGraphStore.getState();
     const files = filesOverride ?? fileContents;
@@ -384,11 +397,65 @@ export default function GymBuilderPage() {
       })),
     };
 
+    // Phase 1: change detection + upload
+    let rootHash: string;
     try {
-      const rootHash = await uploadGymBundle(bundle);
+      const newContentHash = await computeBundleHash(bundle);
+      const current = savedGyms.find((g) => g.rootHash === currentGymHash);
+
+      if (current?.contentHash === newContentHash) {
+        // No content change — skip upload
+        setNoChanges(true);
+        setTimeout(() => setNoChanges(false), 2500);
+        setSaving(false);
+        return currentGymHash;
+      }
+
+      rootHash = await uploadGymBundle(bundle);
+
+      const versionEntry: VersionEntry = {
+        hash: rootHash,
+        timestamp: bundle.savedAt,
+        message: versionMessage.trim(),
+      };
+      const newVersions: VersionEntry[] = [
+        ...(current?.versions ?? []),
+        versionEntry,
+      ];
+
       setStorageCid(rootHash);
       setCurrentGymHash(rootHash);
-      addSavedGym({ rootHash, name, savedAt: bundle.savedAt });
+      addSavedGym({
+        rootHash,
+        name,
+        savedAt: bundle.savedAt,
+        contentHash: newContentHash,
+        versions: newVersions,
+        ensLabel: current?.ensLabel,
+      });
+      setVersionHistory(newVersions);
+      setVersionMessage('');
+
+      // Phase 2: manifest upload (best-effort, non-blocking)
+      const ensLabel = current?.ensLabel;
+      ;(async () => {
+        try {
+          const manifest: VersionManifest = {
+            schemaVersion: '1',
+            gymName: name,
+            versions: newVersions,
+            current: rootHash,
+          };
+          const manifestHash = await uploadVersionManifest(manifest);
+          updateGymEntry(rootHash, { manifestHash });
+          if (ensLabel) {
+            await setEnsTextRecord(ensLabel, 'gym', 'com.440hz.versions', manifestHash);
+          }
+        } catch (e) {
+          setManifestError((e as Error).message);
+        }
+      })();
+
       return rootHash;
     } catch (e) {
       setUploadError((e as Error).message);
@@ -396,6 +463,16 @@ export default function GymBuilderPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // ── Rollback to a previous version ──
+  async function handleRollback(targetHash: string) {
+    setRollingBack(true);
+    setVersionPanelOpen(false);
+    await handleOpen(targetHash);
+    const entry = useGymStore.getState().savedGyms.find((g) => g.rootHash === targetHash);
+    if (entry?.versions) setVersionHistory(entry.versions);
+    setRollingBack(false);
   }
 
   // ── Publish (compile + upload + marketplace listing) ──
@@ -476,6 +553,8 @@ export default function GymBuilderPage() {
           const addr = await signer.getAddress();
           const ensName = await registerSubname(publishName, 'gym', addr);
           setPublishEnsName(ensName);
+          // Record ENS label so future saves can write version manifest text record
+          if (rootHash) updateGymEntry(rootHash, { ensLabel: slugify(publishName) });
         }
       } catch {
         setPublishEnsName(buildEnsName(publishName, 'gym'));
@@ -523,6 +602,11 @@ export default function GymBuilderPage() {
 
       setCurrentGymHash(hash.trim());
       setStorageCid(hash.trim());
+
+      // Restore version history from local store entry if available
+      const entry = useGymStore.getState().savedGyms.find((g) => g.rootHash === hash.trim());
+      setVersionHistory(entry?.versions ?? []);
+
       setOpenModalVisible(false);
       setOpenHashInput("");
     } catch (e) {
@@ -939,6 +1023,36 @@ export default function GymBuilderPage() {
           )}
         </div>
 
+        {/* Version note input */}
+        <input
+          type="text"
+          placeholder="Version note…"
+          value={versionMessage}
+          onChange={(e) => setVersionMessage(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !saving && handleSave()}
+          maxLength={120}
+          className="text-[11px] px-2 py-1.5 w-32 bg-canvas border border-border rounded-lg
+                     text-white placeholder:text-muted/40 focus:outline-none focus:border-purple/40"
+        />
+
+        {/* Version history toggle */}
+        <button
+          onClick={() => setVersionPanelOpen((v) => !v)}
+          className={`text-[12px] font-medium px-2.5 py-1.5 rounded-lg border transition-all flex items-center gap-1 ${
+            versionPanelOpen
+              ? 'border-purple/40 text-purple bg-purple/10'
+              : 'border-border text-muted hover:text-white hover:border-border/60'
+          }`}
+          title="Version history"
+        >
+          ⧖
+          {versionHistory.length > 0 && (
+            <span className="text-[10px] bg-purple/20 text-purple px-1 rounded-full leading-tight">
+              {versionHistory.length}
+            </span>
+          )}
+        </button>
+
         {/* Save to 0G */}
         <button
           onClick={() => handleSave()}
@@ -1004,6 +1118,12 @@ export default function GymBuilderPage() {
           </span>
         </div>
       )}
+      {noChanges && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-blue-500/10 border-b border-blue-500/20 shrink-0">
+          <span className="text-[11px] text-blue-400 font-medium">No changes</span>
+          <span className="text-[11px] text-blue-400/70">Content unchanged since last save.</span>
+        </div>
+      )}
       {uploadError && (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 shrink-0">
           <span className="text-[11px] text-red-400 font-medium">
@@ -1012,6 +1132,19 @@ export default function GymBuilderPage() {
           <span className="text-[11px] text-red-400/70 truncate">
             {uploadError}
           </span>
+        </div>
+      )}
+      {manifestError && (
+        <div className="flex items-center justify-between gap-2 px-4 py-1.5 bg-yellow-500/10 border-b border-yellow-500/20 shrink-0">
+          <span className="text-[11px] text-yellow-400/80 truncate">
+            Version manifest upload failed — history saved locally only
+          </span>
+          <button
+            onClick={() => setManifestError(null)}
+            className="text-[11px] text-yellow-400/50 hover:text-yellow-400 shrink-0"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -1098,6 +1231,16 @@ export default function GymBuilderPage() {
           </ReactFlowProvider>
         )}
       </div>
+
+      {/* Version history drawer */}
+      <VersionHistoryPanel
+        open={versionPanelOpen}
+        onClose={() => setVersionPanelOpen(false)}
+        versions={versionHistory}
+        currentHash={currentGymHash}
+        onRollback={handleRollback}
+        rollingBack={rollingBack}
+      />
     </div>
   );
 }
