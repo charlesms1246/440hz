@@ -24,7 +24,7 @@ import { useGymStore, type VersionEntry } from "@/lib/gymStore";
 import type { VersionManifest } from "@/lib/gymStore";
 import { publishGymListing, type MarketListing } from "@/lib/utils/kvMarketplace";
 import { contractListGym } from "@/lib/contracts";
-import { registerSubname, buildEnsName, slugify, setEnsTextRecord } from "@/lib/utils/ensSubname";
+import { buildEnsName, slugify, setEnsTextRecord } from "@/lib/utils/ensSubname";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
 
 const MonacoEditor = dynamic(() => import("./_MonacoEditor"), { ssr: false });
@@ -516,15 +516,13 @@ export default function GymBuilderPage() {
         publishedAt: new Date().toISOString(),
         publishedBy: '',  // filled below
       };
-      // Try to get wallet address for attribution
+      // Try to get wallet address for attribution — use eth_accounts (no popup)
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof window !== 'undefined' && (window as any).ethereum) {
-          const { BrowserProvider } = await import('ethers');
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const provider = new BrowserProvider((window as any).ethereum);
-          const signer = await provider.getSigner();
-          listing.publishedBy = (await signer.getAddress()).toLowerCase();
+        const eth = typeof window !== 'undefined' && (window as any).ethereum
+        if (eth) {
+          const accounts: string[] = await eth.request({ method: 'eth_accounts' })
+          if (accounts?.length) listing.publishedBy = accounts[0].toLowerCase()
         }
       } catch { /* attribution best-effort */ }
 
@@ -542,20 +540,19 @@ export default function GymBuilderPage() {
         priceWei,
       )
 
-      // Register gym.440hz.eth subname on Base Sepolia — best-effort
+      // Register gym.440hz.eth subname on Base Sepolia via server wallet — best-effort
+      const addr = listing.publishedBy
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof window !== 'undefined' && (window as any).ethereum) {
-          const { BrowserProvider } = await import('ethers');
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const provider = new BrowserProvider((window as any).ethereum);
-          const signer = await provider.getSigner();
-          const addr = await signer.getAddress();
-          const ensName = await registerSubname(publishName, 'gym', addr);
-          setPublishEnsName(ensName);
-          // Record ENS label so future saves can write version manifest text record
-          if (rootHash) updateGymEntry(rootHash, { ensLabel: slugify(publishName) });
-        }
+        const ensLabel = slugify(publishName)
+        await fetch('/api/ens/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: `${ensLabel}-gym`, ownerAddress: addr || '0x0000000000000000000000000000000000000000' }),
+        })
+        const ensName = buildEnsName(publishName, 'gym')
+        setPublishEnsName(ensName)
+        // Record ENS label so future saves can write version manifest text record
+        if (rootHash) updateGymEntry(rootHash, { ensLabel })
       } catch {
         setPublishEnsName(buildEnsName(publishName, 'gym'));
       }

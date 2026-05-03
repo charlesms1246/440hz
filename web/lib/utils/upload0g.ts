@@ -1,8 +1,8 @@
 'use client'
 
 import { MemData, Indexer } from '@0gfoundation/0g-ts-sdk'
-import { BrowserProvider } from 'ethers'
-import { getWalletClient, switchChain } from '@wagmi/core'
+import { BrowserProvider, JsonRpcSigner } from 'ethers'
+import { switchChain } from '@wagmi/core'
 import { wagmiConfig, zeroGGalileo } from '@/lib/wagmi'
 import type { VersionManifest } from '@/lib/gymStore'
 
@@ -33,16 +33,21 @@ export type GymBundle = {
 // as long as the wallet is already on 0G Galileo.
 
 async function uploadBytesAsUser(bytes: Uint8Array): Promise<string> {
-  // Switch to 0G Galileo via wagmi (reuses the existing connection — no wallet picker)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const eth = typeof window !== 'undefined' && (window as any).ethereum
+  if (!eth) throw new Error('No injected wallet found. Connect MetaMask or Rabby first.')
+
+  // Switch to 0G Galileo via wagmi (no picker — just a chain-switch approval if needed)
   await switchChain(wagmiConfig, { chainId: zeroGGalileo.id })
 
-  // Get the already-connected wallet client from wagmi
-  const walletClient = await getWalletClient(wagmiConfig, { chainId: zeroGGalileo.id })
-  if (!walletClient) throw new Error('No connected wallet. Connect your wallet first.')
+  // eth_accounts returns already-connected accounts silently (no picker, no eth_requestAccounts)
+  const accounts: string[] = await eth.request({ method: 'eth_accounts' })
+  if (!accounts?.length) throw new Error('Connect your wallet first.')
 
-  // Wrap wagmi's wallet client in an ethers BrowserProvider
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const signer = await new BrowserProvider(walletClient.transport as any).getSigner()
+  // Construct signer directly from known address — skips the eth_requestAccounts call
+  // that getSigner() would trigger, avoiding the wallet provider selection popup
+  const provider = new BrowserProvider(eth, zeroGGalileo.id)
+  const signer = new JsonRpcSigner(provider, accounts[0])
 
   const data = new MemData(bytes)
   const [tree, treeErr] = await data.merkleTree()
