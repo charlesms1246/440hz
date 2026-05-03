@@ -51,11 +51,18 @@ _tasks: dict[str, TaskStatus] = {}
 # Per-task asyncio queues that SSE consumers read from.
 _log_queues: dict[str, asyncio.Queue] = {}
 # Global DA stream queue — all DA checkpoint events from all tasks go here.
-_da_queue: asyncio.Queue = asyncio.Queue(maxsize=512)
+# Initialized lazily in startup() to avoid creating the Queue outside an event loop (Python 3.10+).
+_da_queue: asyncio.Queue | None = None
 # Running subprocess handles for cancellation.
 _processes: dict[str, asyncio.subprocess.Process] = {}
 # Cache of submitted ZGTask objects (for 0G protocol tasks only).
 _zg_tasks: dict[str, object] = {}
+
+
+def init_queues() -> None:
+    """Initialize asyncio queues inside the event loop (must be called from async startup)."""
+    global _da_queue
+    _da_queue = asyncio.Queue(maxsize=512)
 
 
 # ---------------------------------------------------------------------------
@@ -311,9 +318,9 @@ async def _drain_stdout(task_id: str, proc: asyncio.subprocess.Process) -> None:
                 event_type = event.get("type", "log")
                 entry = LogEntry(ts=event.get("ts", time.time()), type=event_type, payload=event)
                 await _push_log(task_id, entry)
-                if event_type == "da_checkpoint":
+                if event_type == "da_checkpoint" and _da_queue is not None:
                     try:
-                        await _da_queue.put_nowait(entry)
+                        _da_queue.put_nowait(entry)
                     except asyncio.QueueFull:
                         pass
                 continue
@@ -377,8 +384,13 @@ def _finish_task(
 
     # Trigger on-chain settlement when training completes successfully.
     if state == "completed":
-        from . import settlement
-        asyncio.create_task(settlement.settle_job(task_id))
+        try:
+            from . import settlement
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(settlement.settle_job(task_id))
+        except Exception as exc:
+            log.warning("Settlement scheduling failed for task %s: %s", task_id, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +437,7 @@ async def stream_task_logs(task_id: str) -> AsyncIterator[LogEntry]:
 
 async def stream_da_events() -> AsyncIterator[LogEntry]:
     """Yield DA checkpoint events from all running tasks."""
-    while True:
+    while _da_queue is not None:
         entry = await _da_queue.get()
         yield entry
 
@@ -601,6 +613,145 @@ def get_zg_task(task_id: str):
         progress=progress,
         deliverIndex=deliver_index,
     )
+
+
+# ---------------------------------------------------------------------------
+# Merge subprocess management
+# ---------------------------------------------------------------------------
+
+_merge_queues: dict[str, asyncio.Queue] = {}
+_merge_processes: dict[str, asyncio.subprocess.Process] = {}
+
+
+async def merge_task(task_id: str) -> dict:
+    """
+    Spawn merger.merge as a subprocess to merge the LoRA adapter into the base model.
+    Returns immediately; merge runs in background. Poll GET /tasks/{id} for merged_model_ref.
+    """
+    ts = _tasks.get(task_id)
+    if ts is None:
+        raise ValueError(f"Task {task_id} not found")
+    if ts.state != "completed":
+        raise ValueError(f"Task {task_id} is not completed (state={ts.state})")
+    if not ts.receipt:
+        raise ValueError(f"Task {task_id} has no receipt")
+
+    adapter_ref = ts.receipt.get("adapter_ref") or ""
+    base_model  = ts.receipt.get("base_model") or ""
+    if not adapter_ref:
+        raise ValueError(f"Task {task_id} receipt has no adapter_ref")
+    if not base_model:
+        raise ValueError(f"Task {task_id} receipt has no base_model")
+
+    task_dir = _STATE_DIR / "tasks" / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    merge_receipt_path = task_dir / "merge_receipt.json"
+
+    # Reset merge queue for this task.
+    _merge_queues[task_id] = asyncio.Queue(maxsize=4096)
+
+    asyncio.create_task(
+        _run_merger(task_id, adapter_ref, base_model, merge_receipt_path),
+        name=f"merger-{task_id}",
+    )
+    return {"task_id": task_id, "state": "merging"}
+
+
+async def _run_merger(
+    task_id: str,
+    adapter_ref: str,
+    base_model: str,
+    merge_receipt_path: Path,
+) -> None:
+    env = {
+        **os.environ,
+        "ADAPTER_REF":  adapter_ref,
+        "BASE_MODEL":   base_model,
+        "RECEIPT_PATH": str(merge_receipt_path),
+        "PYTHONPATH":   _EXECUTOR_PYTHONPATH,
+        "PYTHONUNBUFFERED": "1",
+    }
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            _EXECUTOR_PYTHON, "-m", "merger.merge",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env,
+        )
+        _merge_processes[task_id] = proc
+
+        drain = asyncio.create_task(_drain_merge_stdout(task_id, proc))
+        await drain
+        await proc.wait()
+
+        if proc.returncode == 0 and merge_receipt_path.exists():
+            try:
+                receipt = json.loads(merge_receipt_path.read_text())
+                ts = _tasks.get(task_id)
+                if ts:
+                    ts.merged_model_ref = receipt.get("merged_model_ref")
+                    ts.updated_at = time.time()
+                    _persist()
+                    log.info("Merge complete for task %s: %s", task_id, ts.merged_model_ref)
+            except Exception as exc:
+                log.warning("Could not read merge receipt for task %s: %s", task_id, exc)
+        else:
+            log.warning("Merger exited with code %s for task %s", proc.returncode, task_id)
+
+    except Exception as exc:
+        log.exception("Merger subprocess error for task %s", task_id)
+        q = _merge_queues.get(task_id)
+        if q:
+            entry = LogEntry(ts=time.time(), type="error", payload={"message": str(exc)})
+            try:
+                q.put_nowait(entry)
+            except asyncio.QueueFull:
+                pass
+    finally:
+        _merge_processes.pop(task_id, None)
+        q = _merge_queues.get(task_id)
+        if q:
+            await q.put(None)
+
+
+async def _drain_merge_stdout(task_id: str, proc: asyncio.subprocess.Process) -> None:
+    assert proc.stdout is not None
+    q = _merge_queues.get(task_id)
+    async for raw_line in proc.stdout:
+        line = raw_line.decode(errors="replace").rstrip()
+        if not line:
+            continue
+        if line.startswith("{"):
+            try:
+                event = json.loads(line)
+                entry = LogEntry(ts=event.get("ts", time.time()), type=event.get("type", "log"), payload=event)
+                if q:
+                    try:
+                        q.put_nowait(entry)
+                    except asyncio.QueueFull:
+                        pass
+                continue
+            except json.JSONDecodeError:
+                pass
+        entry = LogEntry(ts=time.time(), type="log", payload={"message": line})
+        if q:
+            try:
+                q.put_nowait(entry)
+            except asyncio.QueueFull:
+                pass
+
+
+async def stream_merge_logs(task_id: str) -> AsyncIterator[LogEntry]:
+    """Yield LogEntry objects from the merge subprocess until it finishes."""
+    q = _merge_queues.get(task_id)
+    if q is None:
+        return
+    while True:
+        entry = await q.get()
+        if entry is None:
+            break
+        yield entry
 
 
 def get_zg_task_logs(task_id: str, max_lines: int = 200) -> list[str]:

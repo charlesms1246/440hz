@@ -157,6 +157,8 @@ class TaskStatus(BaseModel):
     # Full content of the executor's receipt.json once the job finishes.
     receipt: dict | None = None
     error: str | None = None
+    # Set after POST /tasks/{id}/merge completes successfully.
+    merged_model_ref: str | None = None
 
 
 # ── System metrics ────────────────────────────────────────────────────────────
