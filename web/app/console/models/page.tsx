@@ -68,6 +68,75 @@ function toRow(t: ApiTask): ModelRow {
   };
 }
 
+// ── Mock data (shown when provider API is offline) ────────────────────────────
+
+const MOCK_ROWS: ModelRow[] = [
+  {
+    id: "mock-task-001abc",
+    name: "CartPole-v1",
+    base: "Qwen2.5-0.5B",
+    state: "completed",
+    adapterRef: "0x4a3f8c2d1e9b7f60a2c5d8e3f1a4b7c0d9e2f5a8",
+    isOnChain: true,
+    reward: 487.32,
+    episodes: 24800,
+    elapsedHours: 2.14,
+    createdAt: "2026-04-28",
+    gymImage: "0x9b3a1c2d…",
+    mergedRef: null,
+    submitterAddress: "0xDemoAddr",
+    adapterTxSeq: 10241,
+  },
+  {
+    id: "mock-task-002def",
+    name: "LunarLander-v3",
+    base: "Llama-3.2-1B",
+    state: "running",
+    adapterRef: null,
+    isOnChain: false,
+    reward: null,
+    episodes: null,
+    elapsedHours: 0.73,
+    createdAt: "2026-05-03",
+    gymImage: "0xc8f2e1b7…",
+    mergedRef: null,
+    submitterAddress: "0xDemoAddr",
+    adapterTxSeq: null,
+  },
+  {
+    id: "mock-task-003ghi",
+    name: "MountainCar-Cont",
+    base: "SmolLM2-135M",
+    state: "pending",
+    adapterRef: null,
+    isOnChain: false,
+    reward: null,
+    episodes: null,
+    elapsedHours: null,
+    createdAt: "2026-05-03",
+    gymImage: null,
+    mergedRef: null,
+    submitterAddress: "0xDemoAddr",
+    adapterTxSeq: null,
+  },
+  {
+    id: "mock-task-004jkl",
+    name: "BipedalWalker-v3",
+    base: "Qwen2.5-0.5B",
+    state: "failed",
+    adapterRef: null,
+    isOnChain: false,
+    reward: null,
+    episodes: null,
+    elapsedHours: 0.12,
+    createdAt: "2026-04-30",
+    gymImage: null,
+    mergedRef: null,
+    submitterAddress: "0xDemoAddr",
+    adapterTxSeq: null,
+  },
+];
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ModelsPage() {
@@ -82,6 +151,7 @@ export default function ModelsPage() {
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [mergeRef, setMergeRef] = useState<string | null>(null);
+  const [demoBannerDismissed, setDemoBannerDismissed] = useState(false);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -110,8 +180,13 @@ export default function ModelsPage() {
     return () => clearInterval(timer);
   }, [fetchTasks]);
 
-  const rows = tasks.map(toRow);
-  const selected = rows.find((r) => r.id === selectedId) ?? rows[0] ?? null;
+  // When offline, use mock rows; otherwise use live rows
+  const rows = offline ? MOCK_ROWS : tasks.map(toRow);
+  const effectiveSelectedId = offline
+    ? (selectedId ?? MOCK_ROWS[0].id)
+    : selectedId;
+  const selected =
+    rows.find((r) => r.id === effectiveSelectedId) ?? rows[0] ?? null;
 
   async function handleCopy(text: string) {
     try {
@@ -178,20 +253,6 @@ export default function ModelsPage() {
     );
   }
 
-  if (offline) {
-    return (
-      <div className="flex h-full items-center justify-center flex-col gap-3">
-        <div className="text-[12px] text-muted">Provider API offline</div>
-        <div className="text-[11px] text-muted/60 font-mono">{PROVIDER_API}</div>
-        <button
-          onClick={fetchTasks}
-          className="text-[11px] px-3 py-1.5 border border-border text-muted hover:text-white hover:border-gray-500 transition-colors mt-1"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
 
   if (rows.length === 0) {
     return (
@@ -207,7 +268,38 @@ export default function ModelsPage() {
   // ── Main layout ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Demo mode banner — shown when provider API is offline */}
+      {offline && !demoBannerDismissed && (
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-amber/10 border-b border-amber/20 text-[11px] text-amber">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber animate-pulse shrink-0" />
+            <span>
+              <span className="font-semibold">Demo mode</span>
+              {' — provider API unreachable ('}
+              <span className="font-mono">{PROVIDER_API}</span>
+              {'). Showing sample data.'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={fetchTasks}
+              className="underline underline-offset-2 hover:text-white transition-colors"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => setDemoBannerDismissed(true)}
+              className="opacity-60 hover:opacity-100 transition-opacity"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
       {/* Model list */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
@@ -483,6 +575,7 @@ export default function ModelsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { formatEther } from 'ethers'
 import { useAccount } from 'wagmi'
 import {
@@ -15,11 +15,6 @@ import { keccak256, toUtf8Bytes } from 'ethers'
 const ZK_SERVER_BASE =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_ZK_SERVER_URL) ||
   'http://localhost:3050'
-import {
-  ReactFlow, Background, Controls, MiniMap, addEdge,
-  useNodesState, useEdgesState, type Connection, type Node, type NodeTypes,
-  Handle, Position,
-} from '@xyflow/react'
 import { useGymStore } from '@/lib/gymStore'
 
 // ── Types ──────────────────────────────────────────────────────
@@ -120,7 +115,6 @@ const POPULAR_MODELS = [
 // ── Main page ──────────────────────────────────────────────────
 
 export default function ArenasPage() {
-  const [view, setView] = useState<'list' | 'orchestrator'>('list')
   const [arenas, setArenas] = useState<Arena[]>(SEED_ARENAS)
   const [selected, setSelected] = useState<Arena>(SEED_ARENAS[0])
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -141,19 +135,14 @@ export default function ArenasPage() {
         />
       )}
 
-      {view === 'list' ? (
-        <ArenaList
-          arenas={arenas}
-          selected={selected}
-          setSelected={setSelected}
-          filter={filter}
-          setFilter={setFilter}
-          onNew={() => setWizardOpen(true)}
-          onViewCanvas={() => setView('orchestrator')}
-        />
-      ) : (
-        <Orchestrator arena={selected} onBack={() => setView('list')} />
-      )}
+      <ArenaList
+        arenas={arenas}
+        selected={selected}
+        setSelected={setSelected}
+        filter={filter}
+        setFilter={setFilter}
+        onNew={() => setWizardOpen(true)}
+      />
     </>
   )
 }
@@ -167,7 +156,6 @@ function ArenaList({
   filter,
   setFilter,
   onNew,
-  onViewCanvas,
 }: {
   arenas: Arena[]
   selected: Arena
@@ -175,7 +163,6 @@ function ArenaList({
   filter: 'All' | 'Running' | 'Paused' | 'Pending'
   setFilter: (f: 'All' | 'Running' | 'Paused' | 'Pending') => void
   onNew: () => void
-  onViewCanvas: () => void
 }) {
   const filtered = arenas.filter(a => {
     if (filter === 'All')     return true
@@ -201,12 +188,6 @@ function ArenaList({
             <p className="text-[11px] text-muted">Active reinforcement learning sessions</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={onViewCanvas}
-              className="text-[12px] px-3 py-1.5 border border-border text-muted hover:text-white transition-colors"
-            >
-              Canvas
-            </button>
             <button
               onClick={onNew}
               className="flex items-center gap-1.5 bg-purple hover:bg-purple/80 text-white text-xs font-medium px-3 py-1.5 transition-colors"
@@ -378,161 +359,7 @@ function ArenaDetailPanel({ arena }: { arena: Arena }) {
   )
 }
 
-// ── Orchestrator canvas (job status view) ─────────────────────
 
-type ONodeType = 'baseModel' | 'gym' | 'database' | 'server' | 'compute' | 'deploy'
-interface ONodeData extends Record<string, unknown> { label: string; sub?: string; nodeType: ONodeType }
-
-const nodeColors: Record<ONodeType, string> = {
-  baseModel: '#7c3aed', gym: '#22c55e', database: '#3b82f6',
-  server: '#f59e0b',    compute: '#f43f5e', deploy: '#a855f7',
-}
-const nodeIcons: Record<ONodeType, string> = {
-  baseModel: '🤖', gym: '🏟️', database: '🗄️',
-  server: '🌐',    compute: '⚡', deploy: '🚀',
-}
-
-function OrchestratorNode({ data }: { data: ONodeData }) {
-  const color = nodeColors[data.nodeType]
-  return (
-    <div className="relative border overflow-hidden min-w-36"
-      style={{ backgroundColor: '#0e1018', borderColor: color + '60', boxShadow: `0 0 12px ${color}22` }}
-    >
-      <Handle type="target" position={Position.Left} style={{ background: color, border: 'none', width: 8, height: 8 }} />
-      <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: color + '22', borderBottom: `1px solid ${color}40` }}>
-        <span className="text-sm">{nodeIcons[data.nodeType]}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color }}>{data.nodeType}</span>
-      </div>
-      <div className="px-3 py-2">
-        <div className="text-[12px] font-semibold text-white">{data.label}</div>
-        {data.sub && <div className="text-[10px] text-gray-500 mt-0.5">{data.sub}</div>}
-      </div>
-      <Handle type="source" position={Position.Right} style={{ background: color, border: 'none', width: 8, height: 8 }} />
-    </div>
-  )
-}
-
-const orchestratorNodeTypes: NodeTypes = { orchestrator: OrchestratorNode }
-
-const paletteItems: { type: ONodeType; label: string; desc: string }[] = [
-  { type: 'baseModel', label: 'Base Model',    desc: 'Foundation LLM to fine-tune' },
-  { type: 'gym',       label: 'Gym',           desc: 'Training environment'         },
-  { type: 'database',  label: 'Database',      desc: 'External context DB'          },
-  { type: 'server',    label: 'Server',        desc: 'API / tool server'            },
-  { type: 'compute',   label: 'Compute Spec',  desc: 'GPU allocation spec'          },
-  { type: 'deploy',    label: 'Deploy',        desc: 'Push to 0G swarm'            },
-]
-
-function buildTopologyNodes(arena: Arena | null): Node[] {
-  if (!arena?.taskJson) {
-    return [
-      { id: 'bm1', type: 'orchestrator', position: { x: 80,  y: 120 }, data: { label: 'Llama-3-7B',       sub: '7B params · fp16',  nodeType: 'baseModel' } },
-      { id: 'gy1', type: 'orchestrator', position: { x: 340, y: 60  }, data: { label: 'PythonCoding',      sub: 'v3.1 · Open',       nodeType: 'gym'       } },
-      { id: 'gy2', type: 'orchestrator', position: { x: 340, y: 180 }, data: { label: 'MathEnv',           sub: 'v1.0 · Open',       nodeType: 'gym'       } },
-      { id: 'sv1', type: 'orchestrator', position: { x: 340, y: 300 }, data: { label: 'GitHub API',        sub: 'REST · OAuth',      nodeType: 'server'    } },
-      { id: 'cp1', type: 'orchestrator', position: { x: 600, y: 120 }, data: { label: '4x A100 80G',       sub: '320 GB VRAM',       nodeType: 'compute'   } },
-      { id: 'dp1', type: 'orchestrator', position: { x: 840, y: 120 }, data: { label: 'Deploy to Swarm',   sub: '0G Network',        nodeType: 'deploy'    } },
-    ]
-  }
-  const t = arena.taskJson
-  const modelLabel = t.base_model.ref.split('/').pop() ?? t.base_model.ref
-  const gymLabel   = t.gym.image_ref.length > 12 ? t.gym.image_ref.slice(0, 10) + '…' : t.gym.image_ref
-  return [
-    { id: 'bm1', type: 'orchestrator', position: { x: 80,  y: 120 }, data: { label: modelLabel, sub: `${t.base_model.quantization} · ${t.base_model.dtype}`, nodeType: 'baseModel' } },
-    { id: 'gy1', type: 'orchestrator', position: { x: 340, y: 120 }, data: { label: gymLabel,   sub: 'gym bundle',                                           nodeType: 'gym'       } },
-    { id: 'cp1', type: 'orchestrator', position: { x: 580, y: 120 }, data: { label: `${t.algorithm.name.toUpperCase()} · ep${t.algorithm.num_episodes}`, sub: `lr ${t.algorithm.learning_rate}`, nodeType: 'compute' } },
-    { id: 'dp1', type: 'orchestrator', position: { x: 820, y: 120 }, data: { label: 'Deploy to 0G',  sub: t.output.destination,                             nodeType: 'deploy'    } },
-  ]
-}
-
-const topologyEdges = (hasTask: boolean) => hasTask
-  ? [
-      { id: 'e1', source: 'bm1', target: 'gy1', animated: true, style: { stroke: '#7c3aed' } },
-      { id: 'e2', source: 'gy1', target: 'cp1', animated: true, style: { stroke: '#22c55e' } },
-      { id: 'e3', source: 'cp1', target: 'dp1', animated: true, style: { stroke: '#f43f5e' } },
-    ]
-  : [
-      { id: 'e1', source: 'bm1', target: 'gy1', animated: true, style: { stroke: '#7c3aed' } },
-      { id: 'e2', source: 'bm1', target: 'gy2', animated: true, style: { stroke: '#7c3aed' } },
-      { id: 'e3', source: 'bm1', target: 'sv1', animated: true, style: { stroke: '#7c3aed' } },
-      { id: 'e4', source: 'gy1', target: 'cp1', animated: true, style: { stroke: '#22c55e' } },
-      { id: 'e5', source: 'gy2', target: 'cp1', animated: true, style: { stroke: '#22c55e' } },
-      { id: 'e6', source: 'cp1', target: 'dp1', animated: true, style: { stroke: '#f43f5e' } },
-    ]
-
-function Orchestrator({ arena, onBack }: { arena: Arena | null; onBack: () => void }) {
-  const initNodes = buildTopologyNodes(arena)
-  const initEdges = topologyEdges(!!arena?.taskJson)
-  const [nodes, , onNodesChange] = useNodesState(initNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges)
-
-  const onConnect = useCallback(
-    (c: Connection) => setEdges(es => addEdge({ ...c, animated: true, style: { stroke: '#7c3aed' } }, es)),
-    [setEdges],
-  )
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-border bg-surface shrink-0">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-[12px] text-muted hover:text-white transition-colors">
-          ← Arenas
-        </button>
-        <div className="w-px h-4 bg-border" />
-        <span className="text-sm font-semibold text-white">
-          {arena?.name ?? 'Arena Topology'}
-        </span>
-        {arena && (
-          <span className="flex items-center gap-1 text-[11px] text-muted">
-            <StatusDot status={arena.status} />
-            {arena.status}
-          </span>
-        )}
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-48 border-r border-border bg-surface flex flex-col shrink-0">
-          <div className="px-3 py-2.5 border-b border-border">
-            <span className="text-[10px] text-muted uppercase tracking-wider">Components</span>
-          </div>
-          <div className="p-2 space-y-1.5 overflow-y-auto">
-            {paletteItems.map(item => (
-              <div
-                key={item.type}
-                draggable
-                onDragStart={e => e.dataTransfer.setData('nodeType', item.type)}
-                className="flex items-start gap-2 p-2.5 border border-border bg-surface-2 hover:border-gray-600 cursor-grab active:cursor-grabbing transition-colors"
-              >
-                <span className="text-base leading-none mt-0.5">{nodeIcons[item.type]}</span>
-                <div>
-                  <div className="text-[11px] font-medium text-white">{item.label}</div>
-                  <div className="text-[10px] text-muted leading-tight">{item.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1">
-          <ReactFlow
-            nodes={nodes} edges={edges}
-            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
-            nodeTypes={orchestratorNodeTypes}
-            fitView snapToGrid snapGrid={[16, 16]}
-            style={{ background: '#08090e' }}
-            defaultEdgeOptions={{ animated: true, style: { stroke: '#1e2030', strokeWidth: 2 } }}
-          >
-            <Background color="#1e2030" gap={24} size={1} />
-            <Controls style={{ background: '#0e1018', border: '1px solid #1e2030' }} />
-            <MiniMap
-              style={{ background: '#0e1018', border: '1px solid #1e2030' }}
-              nodeColor={n => nodeColors[(n.data as ONodeData).nodeType] + '88'}
-            />
-          </ReactFlow>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ── New Arena Wizard ───────────────────────────────────────────
 

@@ -7,7 +7,7 @@ import { useProfileStore, type Persona } from "@/lib/profileStore";
 import { zeroGGalileo } from "@/lib/wagmi";
 import { Logo440hz } from "@/app/_components/Logo440hz";
 import { ThemeToggle } from "@/app/_components/ThemeToggle";
-import { buildEnsName } from "@/lib/utils/ensSubname";
+import { buildEnsName, fetchAllSubnames } from "@/lib/utils/ensSubname";
 
 const personas: { id: Persona; label: string; icon: string; desc: string }[] = [
   {
@@ -58,8 +58,22 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (!isConnected || !address) return;
     hydrate(address).then(() => {
-      const { onboardingComplete: done } = useProfileStore.getState();
+      const { onboardingComplete: done, ensName: storedEns } = useProfileStore.getState();
       if (done) {
+        // If ENS name is missing, fire a background lookup — no blocking, no spinner
+        if (!storedEns) {
+          fetchAllSubnames()
+            .then((all) => {
+              const addrLower = address.toLowerCase();
+              const userSubnames = all
+                .filter((s) => s.type === 'user' && s.registrant.toLowerCase() === addrLower)
+                .sort((a, b) => b.blockNumber - a.blockNumber);
+              if (userSubnames.length > 0) {
+                useProfileStore.getState().save(address, { ensName: userSubnames[0].ensName });
+              }
+            })
+            .catch(() => { /* best-effort — don't block the user */ });
+        }
         router.push("/console/overview");
       } else {
         setStep(1);

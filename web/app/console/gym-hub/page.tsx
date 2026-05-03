@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGymStore, type GymEntry } from '@/lib/gymStore'
 import { downloadGymBundle } from '@/lib/utils/upload0g'
-import { fetchMarketListings, type MarketListing } from '@/lib/utils/kvMarketplace'
+import { fetchMarketListings, fetchGymStats, trackGymDownload, rateGym, type MarketListing, type GymStats } from '@/lib/utils/kvMarketplace'
 import { contractPurchaseGym } from '@/lib/contracts'
-import { resolveGymEns, buildEnsName } from '@/lib/utils/ensSubname'
+import { resolveGymEns, buildEnsName, slugify } from '@/lib/utils/ensSubname'
+
+const STORAGE_EXPLORER = 'https://storagescan-galileo.0g.ai'
 
 const categories = ['All', 'Coding', 'Trading', 'Physics', 'Robotics', 'Math', 'Language']
 
-// Seed data shown while loading or as fallback when both 0G KV and Upstash are unavailable
 const SEED_GYMS: MarketListing[] = [
   { rootHash: 'bafybeief...3lz9', name: 'CodingGym-v2',   description: 'Code generation and debugging environment', category: 'Coding',   complexity: 68, license: 'Open',       cost: 'Free',    publishedAt: '2025-01-01T00:00:00Z', publishedBy: '', rating: 4.6, downloads: 8320 },
   { rootHash: 'bafybeia...5xq3',  name: 'DialogueEnv-v1', description: 'Multi-turn dialogue training environment',   category: 'Language', complexity: 62, license: 'Open',       cost: 'Free',    publishedAt: '2025-01-01T00:00:00Z', publishedBy: '', rating: 4.3, downloads: 5410 },
@@ -23,51 +24,68 @@ const SEED_GYMS: MarketListing[] = [
 export default function GymHubPage() {
   const [tab, setTab]           = useState<'owned' | 'marketplace'>('marketplace')
   const [category, setCategory] = useState('All')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [query, setQuery]       = useState('')
 
-  // ENS lookup
-  const [ensQuery, setEnsQuery]     = useState('')
+  // ENS resolution state (triggered by Enter in the unified search bar)
   const [ensLoading, setEnsLoading] = useState(false)
-  const [ensResult, setEnsResult]   = useState<string | null>(null) // success message
+  const [ensResult, setEnsResult]   = useState<string | null>(null)
   const [ensError, setEnsError]     = useState('')
 
-  // Marketplace live data
+  // Marketplace data
   const [marketListings, setMarketListings] = useState<MarketListing[]>([])
   const [loadingMarket, setLoadingMarket]   = useState(false)
   const [marketErr, setMarketErr]           = useState('')
 
+  // Live stats (downloads + ratings keyed by rootHash)
+  const [stats, setStats] = useState<Record<string, GymStats>>({})
+
   useEffect(() => {
     if (tab !== 'marketplace') return
-    setLoadingMarket(true)
-    setMarketErr('')
-    fetchMarketListings()
-      .then(data => setMarketListings(data.length > 0 ? data : SEED_GYMS))
-      .catch(e => { setMarketErr(e.message); setMarketListings(SEED_GYMS) })
-      .finally(() => setLoadingMarket(false))
+    let cancelled = false
+    const load = async () => {
+      if (cancelled) return
+      setLoadingMarket(true)
+      setMarketErr('')
+      try {
+        const data = await fetchMarketListings()
+        if (cancelled) return
+        const listings = data.length > 0 ? data : SEED_GYMS
+        setMarketListings(listings)
+        const hashes = listings.map(l => l.rootHash)
+        fetchGymStats(hashes).then(s => { if (!cancelled) setStats(s) }).catch(() => {})
+      } catch (e) {
+        if (!cancelled) { setMarketErr((e as Error).message); setMarketListings(SEED_GYMS) }
+      } finally {
+        if (!cancelled) setLoadingMarket(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [tab])
 
   const { savedGyms, addSavedGym } = useGymStore()
   const ownedCids = new Set(savedGyms.map(g => g.rootHash))
 
-  const q = searchQuery.toLowerCase()
+  const q = query.toLowerCase()
   const filtered = marketListings.filter(g =>
     (category === 'All' || g.category === category) &&
     (q === '' || g.name.toLowerCase().includes(q) || g.description.toLowerCase().includes(q))
   )
+  const hasNameMatches = filtered.length > 0
 
-  async function handleEnsLookup() {
-    if (!ensQuery.trim()) return
+  async function handleSearch() {
+    const trimmed = query.trim()
+    if (!trimmed) return
     setEnsLoading(true)
     setEnsError('')
     setEnsResult(null)
     try {
-      // Normalize: if no dot, treat as gym label and build full ENS name
-      const fullName = ensQuery.includes('.')
-        ? ensQuery.trim()
-        : buildEnsName(ensQuery.trim(), 'gym')
+      const fullName = trimmed.includes('.')
+        ? trimmed
+        : buildEnsName(trimmed, 'gym')
       const { currentRootHash } = await resolveGymEns(fullName)
       if (!currentRootHash) {
-        setEnsError('ENS name not found or no version manifest set.')
+        setEnsError('ENS name not found or no version published.')
         return
       }
       if (ownedCids.has(currentRootHash)) {
@@ -77,12 +95,28 @@ export default function GymHubPage() {
       const bundle = await downloadGymBundle(currentRootHash)
       addSavedGym({ rootHash: currentRootHash, name: bundle.projectName, savedAt: new Date().toISOString() })
       setEnsResult(`Added to library: ${bundle.projectName}`)
-      setEnsQuery('')
+      setQuery('')
     } catch (e) {
-      setEnsError(e instanceof Error ? e.message : 'Lookup failed')
+      setEnsError(e instanceof Error ? e.message : 'ENS lookup failed')
     } finally {
       setEnsLoading(false)
     }
+  }
+
+  function handleRating(rootHash: string, value: number) {
+    rateGym(rootHash, value).then(() => {
+      setStats(prev => {
+        const cur = prev[rootHash] ?? { downloads: 0, ratingSum: 0, ratingCount: 0 }
+        return {
+          ...prev,
+          [rootHash]: {
+            ...cur,
+            ratingSum: cur.ratingSum + value,
+            ratingCount: cur.ratingCount + 1,
+          },
+        }
+      })
+    }).catch(() => {})
   }
 
   return (
@@ -108,37 +142,33 @@ export default function GymHubPage() {
         </div>
       </div>
 
-      {/* Search + ENS lookup (marketplace only) */}
+      {/* Unified search (marketplace only) */}
       {tab === 'marketplace' && (
-        <div className="px-6 py-3 border-b border-border space-y-2">
-          {/* Text search */}
-          <input
-            type="text"
-            placeholder="Search gyms by name or description…"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full text-[12px] px-3 py-1.5 bg-surface-2 border border-border text-white placeholder:text-muted/50 focus:outline-none focus:border-purple/40 rounded-lg"
-          />
-          {/* ENS lookup */}
+        <div className="px-6 py-3 border-b border-border space-y-1.5">
           <div className="flex items-center gap-2">
             <input
               type="text"
-              placeholder="ENS lookup: foo-gym.440hz.eth or just foo"
-              value={ensQuery}
-              onChange={e => { setEnsQuery(e.target.value); setEnsError(''); setEnsResult(null) }}
-              onKeyDown={e => e.key === 'Enter' && !ensLoading && handleEnsLookup()}
+              placeholder="Search by name, description, or ENS (press Enter to resolve ENS)"
+              value={query}
+              onChange={e => { setQuery(e.target.value); setEnsError(''); setEnsResult(null) }}
+              onKeyDown={e => { if (e.key === 'Enter' && !ensLoading) handleSearch() }}
               className="flex-1 text-[12px] px-3 py-1.5 bg-surface-2 border border-border text-white placeholder:text-muted/50 focus:outline-none focus:border-purple/40 rounded-lg"
             />
-            <button
-              onClick={handleEnsLookup}
-              disabled={ensLoading || !ensQuery.trim()}
-              className="text-[11px] px-3 py-1.5 border border-border text-muted hover:text-white hover:border-purple/40 rounded-lg transition-all disabled:opacity-40"
-            >
-              {ensLoading ? '…' : 'Resolve'}
-            </button>
+            {query.trim() && !hasNameMatches && (
+              <button
+                onClick={handleSearch}
+                disabled={ensLoading}
+                className="text-[11px] px-3 py-1.5 border border-border text-muted hover:text-white hover:border-purple/40 rounded-lg transition-all disabled:opacity-40 whitespace-nowrap"
+              >
+                {ensLoading ? '…' : 'Resolve ENS'}
+              </button>
+            )}
           </div>
           {ensResult && <p className="text-[11px] text-green">{ensResult}</p>}
-          {ensError && <p className="text-[11px] text-signal-red">{ensError}</p>}
+          {ensError  && <p className="text-[11px] text-signal-red">{ensError}</p>}
+          {query.trim() && !hasNameMatches && !ensLoading && !ensResult && !ensError && (
+            <p className="text-[11px] text-muted">No name match — press Enter or click Resolve ENS to search on-chain</p>
+          )}
         </div>
       )}
 
@@ -189,16 +219,22 @@ export default function GymHubPage() {
                   <MarketCard
                     key={gym.rootHash}
                     gym={gym}
+                    liveStats={stats[gym.rootHash]}
                     isOwned={ownedCids.has(gym.rootHash)}
                     onDownload={async () => {
-                      // Only call the contract for paid gyms; free gyms are open-access on 0G Storage
                       if (gym.cost !== 'Free') {
                         const priceWei = BigInt(Math.round(parseFloat(gym.cost) * 1e18))
                         await contractPurchaseGym(gym.rootHash, priceWei)
                       }
                       const bundle = await downloadGymBundle(gym.rootHash)
                       addSavedGym({ rootHash: gym.rootHash, name: bundle.projectName || gym.name, savedAt: new Date().toISOString() })
+                      trackGymDownload(gym.rootHash)
+                      setStats(prev => {
+                        const cur = prev[gym.rootHash] ?? { downloads: 0, ratingSum: 0, ratingCount: 0 }
+                        return { ...prev, [gym.rootHash]: { ...cur, downloads: cur.downloads + 1 } }
+                      })
                     }}
+                    onRate={v => handleRating(gym.rootHash, v)}
                   />
                 ))}
               </div>
@@ -307,16 +343,51 @@ function ComplexityBar({ value }: { value: number }) {
   )
 }
 
+function StarRating({ ratingSum, ratingCount, onRate }: { ratingSum: number; ratingCount: number; onRate: (v: number) => void }) {
+  const [hover, setHover] = useState(0)
+  const [voted, setVoted] = useState(false)
+  const avg = ratingCount > 0 ? ratingSum / ratingCount : 0
+
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map(i => (
+        <button
+          key={i}
+          disabled={voted}
+          onMouseEnter={() => !voted && setHover(i)}
+          onMouseLeave={() => setHover(0)}
+          onClick={() => { if (!voted) { onRate(i); setVoted(true) } }}
+          className={`text-[13px] leading-none transition-colors ${
+            voted
+              ? i <= Math.round(avg) ? 'text-amber' : 'text-muted/30'
+              : i <= (hover || Math.round(avg)) ? 'text-amber' : 'text-muted/30 hover:text-amber/60'
+          }`}
+        >
+          ★
+        </button>
+      ))}
+      <span className="text-[10px] text-muted ml-0.5">
+        {avg > 0 ? avg.toFixed(1) : '—'}
+        {ratingCount > 0 && <span className="opacity-50"> ({ratingCount})</span>}
+      </span>
+    </div>
+  )
+}
+
 type DownloadStatus = 'idle' | 'downloading' | 'done' | 'error'
 
 function MarketCard({
   gym,
+  liveStats,
   isOwned,
   onDownload,
+  onRate,
 }: {
   gym: MarketListing
+  liveStats?: GymStats
   isOwned: boolean
   onDownload: () => Promise<void>
+  onRate: (v: number) => void
 }) {
   const [dlStatus, setDlStatus] = useState<DownloadStatus>('idle')
   const [dlError, setDlError]   = useState('')
@@ -327,6 +398,13 @@ function MarketCard({
     gym.category === 'Physics'  ? '⚛️' :
     gym.category === 'Robotics' ? '🤖' :
     gym.category === 'Math'     ? '🧮' : '💬'
+
+  const ensName  = buildEnsName(slugify(gym.name), 'gym')
+  const explorerUrl = `${STORAGE_EXPLORER}/file?hash=${gym.rootHash}`
+
+  const downloads = liveStats?.downloads ?? gym.downloads ?? 0
+  const ratingSum   = liveStats ? liveStats.ratingSum   : (gym.rating ? gym.rating * (liveStats?.ratingCount ?? 1) : 0)
+  const ratingCount = liveStats ? liveStats.ratingCount : (gym.rating ? 1 : 0)
 
   async function handleDownload() {
     setDlStatus('downloading')
@@ -377,8 +455,8 @@ function MarketCard({
 
   return (
     <div className="bg-surface border border-border p-4 hover:border-gray-600 transition-colors flex flex-col">
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-9 h-9 bg-surface-2 flex items-center justify-center text-lg">{icon}</div>
+      <div className="flex items-start justify-between mb-2">
+        <div className="w-9 h-9 bg-surface-2 flex items-center justify-center text-lg shrink-0">{icon}</div>
         <span className={`text-[10px] px-2 py-0.5 border ${
           gym.license === 'Open'       ? 'border-green/30 bg-green/10 text-green' :
           gym.license === 'Enterprise' ? 'border-amber/30 bg-amber/10 text-amber' :
@@ -387,19 +465,32 @@ function MarketCard({
           {gym.license}
         </span>
       </div>
+
       <div className="text-[13px] font-semibold text-white mb-0.5">{gym.name}</div>
-      <div className="text-[11px] text-muted mb-3">{gym.category}</div>
+      <div className="text-[11px] text-muted mb-1">{gym.category}</div>
+
+      {/* ENS name linked to 0G Storage explorer */}
+      <a
+        href={explorerUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[10px] font-mono text-purple-400/70 hover:text-purple-300 truncate mb-2 transition-colors"
+        title={`View on 0G Storage: ${gym.rootHash}`}
+      >
+        {ensName}
+      </a>
+
       <div className="mb-2">
         <div className="text-[10px] text-muted mb-1">Complexity</div>
         <ComplexityBar value={gym.complexity} />
       </div>
-      <div className="text-[10px] font-mono text-muted truncate mb-3">
-        {gym.rootHash.slice(0, 16)}…{gym.rootHash.slice(-6)}
+
+      {/* Stars + download count */}
+      <div className="flex items-center justify-between mb-2">
+        <StarRating ratingSum={ratingSum} ratingCount={ratingCount} onRate={onRate} />
+        <span className="text-[10px] text-muted">{downloads.toLocaleString()} pulls</span>
       </div>
-      <div className="flex items-center justify-between text-[11px] text-muted mb-3">
-        <span>⭐ {gym.rating ?? '—'}</span>
-        <span>{gym.downloads?.toLocaleString() ?? '0'} pulls</span>
-      </div>
+
       {dlStatus === 'error' && dlError && (
         <p className="text-[10px] text-signal-red mb-2 truncate" title={dlError}>{dlError}</p>
       )}

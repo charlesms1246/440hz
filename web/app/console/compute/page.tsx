@@ -324,7 +324,7 @@ export default function ComputePage() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 ${daLogs.length > 0 ? "bg-green animate-pulse" : "bg-border"}`} />
-              <span className="text-sm font-semibold text-white">DA Heartbeat</span>
+              <span className="text-sm font-semibold text-white">System Logs</span>
             </div>
             <span className="text-[11px] text-muted font-mono">{daLogs.length} events</span>
           </div>

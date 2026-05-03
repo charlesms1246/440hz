@@ -281,7 +281,7 @@ export default function OverviewPage() {
             })}
           </div>
           <div className="flex justify-between text-[10px] text-muted">
-            <span>decorative</span>
+            <span></span>
             <span>Now</span>
           </div>
         </div>

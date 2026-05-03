@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useProfileStore, type Persona } from "@/lib/profileStore";
 import { useGymStore } from "@/lib/gymStore";
 import { uploadProfilePicture } from "@/lib/utils/upload0g";
+import { buildEnsName } from "@/lib/utils/ensSubname";
 
 const PERSONA_META: { id: Persona; label: string; description: string; color: string }[] = [
   {
@@ -39,6 +40,16 @@ export default function SettingsPage() {
   const [picError, setPicError] = useState("");
   const [picSaved, setPicSaved] = useState(false);
   const picInputRef = useRef<HTMLInputElement>(null);
+
+  // ENS registration state (settings form)
+  const [ensInput, setEnsInput] = useState(username ?? "");
+  const [ensRegistering, setEnsRegistering] = useState(false);
+  const [ensRegistered, setEnsRegistered] = useState(false);
+  const [ensError, setEnsError] = useState("");
+  const settingsPicInputRef = useRef<HTMLInputElement>(null);
+  const [settingsPicUploading, setSettingsPicUploading] = useState(false);
+  const [settingsPicSaved, setSettingsPicSaved] = useState(false);
+  const [settingsPicError, setSettingsPicError] = useState("");
 
   // Stats derived from gym store
   const totalGyms      = savedGyms.length;
@@ -77,6 +88,62 @@ export default function SettingsPage() {
   function handleDisconnect() {
     disconnect();
     router.push("/onboarding");
+  }
+
+  async function handleEnsRegister() {
+    const trimmed = ensInput.trim();
+    if (!address || !trimmed || trimmed.length < 3) {
+      setEnsError("Username must be at least 3 characters");
+      return;
+    }
+    if (!/^[a-z0-9_-]+$/i.test(trimmed)) {
+      setEnsError("Only letters, numbers, _ and - are allowed");
+      return;
+    }
+    setEnsError("");
+    setEnsRegistering(true);
+    try {
+      const res = await fetch("/api/ens/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: trimmed, ownerAddress: address }),
+      });
+      const data = await res.json();
+      if (data.ensName) {
+        if (address) await save(address, { ensName: data.ensName, username: trimmed });
+        setEnsRegistered(true);
+      } else {
+        setEnsError(data.error ?? "Registration failed");
+      }
+    } catch {
+      setEnsError("Network error — please try again");
+    } finally {
+      setEnsRegistering(false);
+    }
+  }
+
+  async function handleSettingsPicChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSettingsPicUploading(true);
+    setSettingsPicError("");
+    setSettingsPicSaved(false);
+    try {
+      const dataUrl = await new Promise<string>((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result as string);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      await uploadProfilePicture(dataUrl);
+      if (address) await save(address, { profilePicture: dataUrl });
+      setSettingsPicSaved(true);
+      setTimeout(() => setSettingsPicSaved(false), 3000);
+    } catch (err) {
+      setSettingsPicError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setSettingsPicUploading(false);
+    }
   }
 
   const initial = (ensName || username)?.[0]?.toUpperCase() ?? "U";
@@ -145,6 +212,107 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* ── Complete Your Profile (shown only when ENS or pic is missing) ─── */}
+        {(!ensName || !profilePicture) && (
+          <div className="bg-surface border border-amber/30 rounded-xl p-5 relative overflow-hidden">
+            {/* Subtle amber glow strip */}
+            <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-amber/60 to-transparent" />
+
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
+              <h2 className="text-[11px] font-semibold text-muted uppercase tracking-wider">
+                Complete Your Profile
+              </h2>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber/10 border border-amber/30 text-amber font-medium">
+                Action needed
+              </span>
+            </div>
+
+            <div className="space-y-5">
+              {/* ── ENS subname registration ── */}
+              {!ensName && (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[12px] text-white font-medium mb-0.5">Register ENS Subname</p>
+                    <p className="text-[11px] text-muted leading-relaxed">
+                      Claim your <span className="font-mono text-purple-400">username.440hz.eth</span> identity.
+                      Registration is gasless — the server pays.
+                    </p>
+                  </div>
+
+                  {ensRegistered ? (
+                    <div className="flex items-center gap-2 text-[12px] text-green font-medium">
+                      <span className="w-4 h-4 rounded-full bg-green/20 border border-green/40 flex items-center justify-center text-[10px]">✓</span>
+                      {ensName} registered!
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          value={ensInput}
+                          onChange={(e) => { setEnsInput(e.target.value); setEnsError(""); }}
+                          onKeyDown={(e) => e.key === "Enter" && handleEnsRegister()}
+                          placeholder="e.g. sigma_coder"
+                          disabled={ensRegistering}
+                          className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-1.5 text-[12px] text-white placeholder:text-muted outline-none focus:border-purple/50 transition-colors disabled:opacity-50"
+                        />
+                        <button
+                          onClick={handleEnsRegister}
+                          disabled={ensRegistering || ensInput.trim().length < 3}
+                          className="shrink-0 text-[12px] font-medium px-4 py-1.5 bg-purple/20 border border-purple/40 text-purple-400 hover:bg-purple/30 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {ensRegistering ? "Registering…" : "Register"}
+                        </button>
+                      </div>
+                      {ensInput.trim().length >= 3 && !ensError && (
+                        <p className="text-[10px] font-mono text-muted">
+                          → {buildEnsName(ensInput.trim(), "user")}
+                        </p>
+                      )}
+                      {ensError && (
+                        <p className="text-[10px] text-signal-red">{ensError}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Profile picture upload ── */}
+              {!profilePicture && (
+                <div className={`space-y-3 ${ !ensName ? "border-t border-border pt-4" : "" }`}>
+                  <div>
+                    <p className="text-[12px] text-white font-medium mb-0.5">Profile Picture</p>
+                    <p className="text-[11px] text-muted">Upload an avatar to personalise your profile.</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-full bg-surface-2 border border-border flex items-center justify-center text-xl font-bold text-muted shrink-0">
+                      {initial}
+                    </div>
+                    <div className="space-y-1.5">
+                      <button
+                        onClick={() => settingsPicInputRef.current?.click()}
+                        disabled={settingsPicUploading}
+                        className="text-[12px] font-medium px-4 py-1.5 border border-border rounded-lg text-muted hover:text-white hover:border-purple/40 transition-colors disabled:opacity-50"
+                      >
+                        {settingsPicUploading ? "Uploading…" : settingsPicSaved ? "✓ Saved" : "Choose photo"}
+                      </button>
+                      {settingsPicError && (
+                        <p className="text-[10px] text-signal-red">{settingsPicError}</p>
+                      )}
+                      <input
+                        ref={settingsPicInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleSettingsPicChange}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Role ────────────────────────────────────────────── */}
         <Section title="Role">
