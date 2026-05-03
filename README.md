@@ -1,10 +1,11 @@
 <div align="center">
 
-<img src="web/public/440-banner.png" alt="440hz Banner" style="border-radius: 20px;">
-
 # 440Hz
 
+![440hz Banner](web/public/440-banner.png)
+
 </div>
+
 440hz is the first decentralized, federated **RLAIF (Reinforcement Learning from AI Feedback)** platform built natively on the **0G ecosystem**. It connects model tuners, domain-expert environment designers, and decentralized hardware providers to enable high-fidelity LLM tuning on edge compute with Zero-Knowledge verified integrity.
 
 ## Summary
