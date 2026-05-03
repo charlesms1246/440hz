@@ -558,7 +558,7 @@ export default function GymBuilderPage() {
         publishedAt: new Date().toISOString(),
         publishedBy: "", // filled below
       };
-      // Try to get wallet address for attribution
+      // Try to get wallet address for attribution — use eth_accounts (no popup)
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (typeof window !== "undefined" && (window as any).ethereum) {
@@ -587,7 +587,8 @@ export default function GymBuilderPage() {
         priceWei,
       );
 
-      // Register gym.440hz.eth subname on Base Sepolia — best-effort
+      // Register gym.440hz.eth subname on Base Sepolia via server wallet — best-effort
+      const addr = listing.publishedBy
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (typeof window !== "undefined" && (window as any).ethereum) {

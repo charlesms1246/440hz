@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { downloadAdapterFromStorage } from "@/lib/utils/download0g";
-import { registerSubname, buildEnsName } from "@/lib/utils/ensSubname";
+import { buildEnsName } from "@/lib/utils/ensSubname";
 import { PROVIDER_API, providerFetch } from "@/lib/utils/providerApi";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -11,6 +11,7 @@ type TaskReceipt = {
   base_model?: string;
   gym_image?: string;
   adapter_ref?: string;
+  adapter_tx_seq?: number;
   final_total_reward?: number;
   final_episode_steps?: number;
   started_at?: number;
@@ -42,6 +43,8 @@ type ModelRow = {
   createdAt: string;
   gymImage: string | null;
   mergedRef: string | null;
+  submitterAddress: string;
+  adapterTxSeq: number | null;
 };
 
 function toRow(t: ApiTask): ModelRow {
@@ -60,6 +63,8 @@ function toRow(t: ApiTask): ModelRow {
     createdAt: new Date(t.created_at * 1000).toISOString().split("T")[0],
     gymImage: t.receipt?.gym_image ?? null,
     mergedRef: t.receipt?.merged_model_ref ?? null,
+    submitterAddress: t.submitter_address,
+    adapterTxSeq: t.receipt?.adapter_tx_seq ?? null,
   };
 }
 
@@ -121,7 +126,6 @@ export default function ModelsPage() {
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [weightsEnsName, setWeightsEnsName] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [mergeRef, setMergeRef] = useState<string | null>(null);
@@ -172,25 +176,9 @@ export default function ModelsPage() {
     if (!selected?.adapterRef || !selected.isOnChain) return;
     setExporting(true);
     setExportError(null);
-    setWeightsEnsName(null);
     try {
       const filename = `${selected.name.replace(/\s+/g, "-")}-adapter.zip`;
       await downloadAdapterFromStorage(selected.adapterRef, filename);
-      // Register weights.440hz.eth subname — best-effort
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof window !== 'undefined' && (window as any).ethereum) {
-          const { BrowserProvider } = await import('ethers');
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const provider = new BrowserProvider((window as any).ethereum);
-          const signer = await provider.getSigner();
-          const addr = await signer.getAddress();
-          const ensName = await registerSubname(selected.name, 'weights', addr);
-          setWeightsEnsName(ensName);
-        }
-      } catch {
-        setWeightsEnsName(buildEnsName(selected.name, 'weights'));
-      }
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "Download failed");
     } finally {

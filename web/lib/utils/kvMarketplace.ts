@@ -1,12 +1,14 @@
 "use client";
 
-import { BrowserProvider } from "ethers";
+import { BrowserProvider, JsonRpcSigner } from "ethers";
 import {
   KvClient,
   Batcher,
   StorageNode,
   FixedPriceFlow__factory,
 } from "@0gfoundation/0g-ts-sdk";
+import { switchChain } from "@wagmi/core";
+import { wagmiConfig, zeroGGalileo } from "@/lib/wagmi";
 
 // ── Network constants (from .env.local) ──────────────────────────
 const EVM_RPC =
@@ -16,8 +18,11 @@ const KV_NODE_URL =
 const STREAM_ID =
   process.env.NEXT_PUBLIC_0G_MARKETPLACE_STREAM_ID ||
   "0x8a6a818b3b7800eee82a2fc80545c0103c35868349472be3d33149f778883c0f";
+// Flow contract on 0G Galileo testnet (same address used by the storage upload route)
+const FLOW_ADDRESS =
+  process.env.NEXT_PUBLIC_0G_FLOW_ADDRESS || "0x22e03a6a89b950f1c82ec5e74f8eca321a105296";
 const COUNT_KEY = new TextEncoder().encode("__count");
-const KV_TIMEOUT_MS = 5000;
+const KV_TIMEOUT_MS = 8000;
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -57,13 +62,18 @@ function decodeValue(data: string): string {
   );
 }
 
-async function getSigner() {
+// Returns a signer from the already-connected wallet without any popup.
+// Uses eth_accounts (no eth_requestAccounts call) + JsonRpcSigner by address.
+async function getConnectedSigner(): Promise<JsonRpcSigner> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (typeof window === "undefined" || !(window as any).ethereum)
-    throw new Error("No injected wallet found. Connect a wallet first.");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const provider = new BrowserProvider((window as any).ethereum);
-  return provider.getSigner();
+  const eth = typeof window !== "undefined" && (window as any).ethereum;
+  if (!eth) throw new Error("No injected wallet found. Connect a wallet first.");
+  // Switch to 0G Galileo without showing a wallet picker
+  await switchChain(wagmiConfig, { chainId: zeroGGalileo.id });
+  const accounts: string[] = await eth.request({ method: "eth_accounts" });
+  if (!accounts?.length) throw new Error("Connect your wallet first.");
+  const provider = new BrowserProvider(eth, zeroGGalileo.id);
+  return new JsonRpcSigner(provider, accounts[0]);
 }
 
 // ── KV read ───────────────────────────────────────────────────────
@@ -93,18 +103,12 @@ async function fetchFromKv(): Promise<MarketListing[]> {
 // ── KV write ──────────────────────────────────────────────────────
 
 async function publishToKv(listing: MarketListing): Promise<void> {
-  const signer = await getSigner();
+  const signer = await getConnectedSigner();
   const kv = new KvClient(KV_NODE_URL);
   const storageNode = new StorageNode(KV_NODE_URL);
 
-  // Get the flow contract address directly from the node's network identity —
-  // no hardcoded contract address needed; the node reports its own flow address.
-  const status = await storageNode.getStatus();
-  if (!status) throw new Error("Failed to get KV node status");
-  const flow = FixedPriceFlow__factory.connect(
-    status.networkIdentity.flowAddress,
-    signer,
-  );
+  // Use hardcoded flow address — storageNode.getStatus() returns -32601 on this node
+  const flow = FixedPriceFlow__factory.connect(FLOW_ADDRESS, signer);
 
   // Read current count
   const countVal = await kv.getValue(STREAM_ID, COUNT_KEY);
@@ -130,21 +134,41 @@ async function publishToKv(listing: MarketListing): Promise<void> {
 // ── Public API ────────────────────────────────────────────────────
 
 export async function fetchMarketListings(): Promise<MarketListing[]> {
-  try {
-    return await withTimeout(fetchFromKv(), KV_TIMEOUT_MS);
-  } catch {
-    const res = await fetch("/api/marketplace");
-    if (!res.ok)
-      throw new Error("Marketplace fetch failed on both 0G KV and Upstash");
-    return res.json();
+  // Merge results from both sources: KV node (on-chain) + Upstash (server fallback).
+  // KV is the canonical decentralised store; Upstash catches listings written during KV downtime.
+  const [kvListings, upstashListings] = await Promise.allSettled([
+    withTimeout(fetchFromKv(), KV_TIMEOUT_MS),
+    fetch("/api/marketplace").then(r => r.ok ? r.json() as Promise<MarketListing[]> : []),
+  ]);
+
+  const kv = kvListings.status === "fulfilled" ? kvListings.value : [];
+  const up = upstashListings.status === "fulfilled" ? upstashListings.value : [];
+
+  // Deduplicate by rootHash, preferring KV entries
+  const seen = new Set<string>();
+  const merged: MarketListing[] = [];
+  for (const item of [...kv, ...up]) {
+    if (!seen.has(item.rootHash)) {
+      seen.add(item.rootHash);
+      merged.push(item);
+    }
   }
+  return merged;
 }
 
 export async function publishGymListing(listing: MarketListing): Promise<void> {
+  // Write to 0G KV node (on-chain, decentralised) first.
+  // Fall back to Upstash (server-side) if the KV node is unavailable.
   try {
     await withTimeout(publishToKv(listing), KV_TIMEOUT_MS);
+    // Mirror to Upstash so the listing survives a KV node outage
+    fetch("/api/marketplace", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(listing),
+    }).catch(() => {});
   } catch {
-    // Upstash fallback via Next.js API route (keeps secrets server-side)
+    // KV write failed — persist to Upstash so the listing isn't lost
     const res = await fetch("/api/marketplace", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -6,6 +6,7 @@
   "description": "Node-side helper invoked by the 440hz Python orchestrator to bridge into @0glabs/0g-serving-broker.",
   "dependencies": {
     "@0glabs/0g-serving-broker": "^0.4.0",
+    "@0gfoundation/0g-ts-sdk": "^1.2.8",
     "ethers": "^6.13.0"
   }
 }

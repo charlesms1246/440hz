@@ -233,10 +233,11 @@ def upload_adapter(
     destination: str,
     encryption_pubkey: Optional[str],
     local_path: Optional[str],
-) -> str:
+) -> tuple[str, int | None]:
     """
-    Package and upload the trained LoRA adapter. Returns either the 0G Storage
-    root hash or the local path, depending on `destination`.
+    Package and upload the trained LoRA adapter.
+    Returns (ref, tx_seq) where ref is the 0G root hash or local path,
+    and tx_seq is the 0G storage sequence ID (None for local).
     """
     src = Path(adapter_dir)
     if not src.exists():
@@ -248,7 +249,7 @@ def upload_adapter(
         if dest.resolve() != src.resolve():
             shutil.copytree(src, dest, dirs_exist_ok=True)
         log.info("Adapter saved locally at %s", dest)
-        return str(dest)
+        return str(dest), None
 
     if destination == "0g_storage":
         # Tar the adapter dir.
@@ -256,23 +257,19 @@ def upload_adapter(
         with tarfile.open(archive, "w:gz") as tf:
             tf.add(src, arcname=src.name)
 
-        # Encrypt to the user's pubkey before upload, if provided. We stub the
-        # encryption call out — production should use a vetted ECIES library
-        # (e.g. eciespy) keyed off `encryption_pubkey` (a hex-encoded secp256k1
-        # public key, matching the user's wallet).
         upload_path = archive
         if encryption_pubkey:
             upload_path = _encrypt_for_pubkey(archive, encryption_pubkey)
 
-        # Upload via the 0G CLI. The CLI prints the resulting root hash.
-        res = _run([
-            "0g-compute-cli", "fine-tuning", "upload",
-            "--data-path", str(upload_path),
-        ])
-        # Parse "Root hash: 0x..." from stdout.
-        for line in res.splitlines():
-            if "Root hash:" in line:
-                return line.split("Root hash:", 1)[1].strip()
+        # Upload via the zg_broker Node helper (uses @0gfoundation/0g-ts-sdk).
+        broker_script = Path(__file__).parent / "zg_broker.mjs"
+        res = _run(["node", str(broker_script), "upload-adapter", str(upload_path)])
+        try:
+            data = json.loads(res.strip())
+            if "rootHash" in data:
+                return data["rootHash"], data.get("txSeq")
+        except Exception:
+            pass
         raise StorageError(f"could not parse root hash from upload output: {res!r}")
 
     raise StorageError(f"unknown destination: {destination}")

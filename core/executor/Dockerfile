@@ -56,8 +56,16 @@ WORKDIR /opt/440hz
 # --------- Python deps ---------
 COPY executor/requirements.txt /opt/440hz/executor/requirements.txt
 COPY gym_sdk/requirements.txt /opt/440hz/gym_sdk/requirements.txt
-RUN pip install --break-system-packages -r /opt/440hz/executor/requirements.txt && \
-    pip install --break-system-packages -r /opt/440hz/gym_sdk/requirements.txt
+# Install torch first from the official PyTorch index (faster, more reliable CDN)
+# then install remaining deps from PyPI with a generous timeout for large wheels.
+RUN python3.11 -m pip install --timeout 300 --retries 5 \
+        torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cu121 && \
+    python3.11 -m pip install --timeout 300 --retries 5 \
+        -r /opt/440hz/executor/requirements.txt \
+        --extra-index-url https://download.pytorch.org/whl/cu121 && \
+    python3.11 -m pip install --timeout 300 --retries 5 \
+        -r /opt/440hz/gym_sdk/requirements.txt
 
 # --------- Node deps from stage 1 ---------
 COPY --from=node-deps /opt/440hz/node_modules /opt/440hz/node_modules

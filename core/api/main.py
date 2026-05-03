@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI):
         level=os.environ.get("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s — %(message)s",
     )
+    task_manager.init_queues()
     task_manager.load_persisted_tasks()
     log.info("440hz provider daemon started")
     yield
@@ -129,6 +130,38 @@ async def get_task(task_id: str):
     if ts is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return ts
+
+
+@app.post("/tasks/{task_id}/merge")
+async def start_merge(task_id: str):
+    try:
+        return await task_manager.merge_task(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/tasks/{task_id}/merge/logs")
+async def stream_merge_logs(task_id: str):
+    ts = task_manager.get_task(task_id)
+    if ts is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    async def _generate() -> AsyncIterator[str]:
+        async for entry in task_manager.stream_merge_logs(task_id):
+            payload = json.dumps(entry.model_dump())
+            yield f"data: {payload}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.post("/tasks/{task_id}/cancel")

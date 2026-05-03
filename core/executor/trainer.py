@@ -301,7 +301,7 @@ class RLAIFTrainer:
         # Group-relative advantages.
         if rewards.std() < 1e-6:
             log.info("group rewards have ~zero variance, skipping update")
-            return {"loss": 0.0, "mean_reward": rewards.mean().item()}
+            return {"loss": 0.0, "mean_reward": rewards.mean().item(), "max_reward": rewards.max().item(), "reward_std": 0.0}
         advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-6)
 
         # Policy gradient with grad enabled.

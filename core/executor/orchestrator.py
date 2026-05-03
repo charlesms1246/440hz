@@ -259,13 +259,15 @@ def main() -> int:
         else:
             log.info("=== Uploading adapter ===")
             _emit({"type": "status", "stage": "uploading_adapter", "destination": task.output.destination})
-            adapter_ref = upload_adapter(
+            adapter_ref, adapter_tx_seq = upload_adapter(
                 adapter_dir=adapter_dir,
                 destination=task.output.destination,
                 encryption_pubkey=task.output.encryption_pubkey,
                 local_path=task.output.local_path,
             )
             receipt["adapter_ref"] = adapter_ref
+            if adapter_tx_seq is not None:
+                receipt["adapter_tx_seq"] = adapter_tx_seq
 
         _emit_receipt(receipt, status="success")
         _emit({"type": "complete", "status": "success",

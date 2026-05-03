@@ -68,13 +68,13 @@ async function fetchExistingBundle(storageSequence: number): Promise<ProfileBund
   }
 }
 
+// Flow contract address on 0G Galileo testnet (chainId 16602)
+const FLOW_ADDRESS = '0x22e03a6a89b950f1c82ec5e74f8eca321a105296'
+
 async function writeToKv(address: string, index: ProfileIndex): Promise<void> {
   const wallet = getServerWallet()
   const storageNode = new StorageNode(KV_NODE_URL)
-  const status = await storageNode.getStatus()
-  if (!status) throw new Error('KV node unavailable')
-
-  const flow = FixedPriceFlow__factory.connect(status.networkIdentity.flowAddress, wallet)
+  const flow = FixedPriceFlow__factory.connect(FLOW_ADDRESS, wallet)
   const batcher = new Batcher(1, [storageNode], flow, EVM_RPC)
 
   batcher.streamDataBuilder.set(
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
     console.error('[profile/POST] 0G Storage upload failed:', err)
   }
 
-  const index: ProfileIndex = { ensName: bundle.ensName, storageSequence }
+  const index: ProfileIndex = { ensName: bundle.ensName, storageSequence, rootHash }
 
   // Write lightweight index to 0G KV (primary)
   try {

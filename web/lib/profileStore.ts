@@ -29,7 +29,7 @@ export const useProfileStore = create<ProfileState>()((set) => ({
   async hydrate(address: string) {
     const res = await fetch(`/api/profile?address=${address}`)
     if (!res.ok) return
-    const index: { ensName: string; storageSequence: number } | null = await res.json()
+    const index: { ensName: string; storageSequence: number; rootHash?: string } | null = await res.json()
     if (!index) return
 
     set({
@@ -39,8 +39,8 @@ export const useProfileStore = create<ProfileState>()((set) => ({
     })
 
     // Lazily load full bundle (username, persona, profilePicture) from 0G Storage
-    if (index.storageSequence > 0) {
-      fetch(`/api/profile/bundle?sequence=${index.storageSequence}`)
+    if (index.rootHash) {
+      fetch(`/api/profile/bundle?hash=${index.rootHash}`)
         .then(r => (r.ok ? r.json() : null))
         .then((bundle: FullProfile | null) => { if (bundle) set(bundle) })
         .catch(() => {})
