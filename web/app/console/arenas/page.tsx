@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { formatEther } from 'ethers'
 import { useAccount } from 'wagmi'
 import {
@@ -15,11 +15,6 @@ import { keccak256, toUtf8Bytes } from 'ethers'
 const ZK_SERVER_BASE =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_ZK_SERVER_URL) ||
   'http://localhost:3050'
-import {
-  ReactFlow, Background, Controls, MiniMap, addEdge,
-  useNodesState, useEdgesState, type Connection, type Node, type NodeTypes,
-  Handle, Position,
-} from '@xyflow/react'
 import { useGymStore } from '@/lib/gymStore'
 
 // ── Types ──────────────────────────────────────────────────────
@@ -120,7 +115,6 @@ const POPULAR_MODELS = [
 // ── Main page ──────────────────────────────────────────────────
 
 export default function ArenasPage() {
-  const [view, setView] = useState<'list' | 'orchestrator'>('list')
   const [arenas, setArenas] = useState<Arena[]>(SEED_ARENAS)
   const [selected, setSelected] = useState<Arena>(SEED_ARENAS[0])
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -140,20 +134,14 @@ export default function ArenasPage() {
           onSubmit={addArena}
         />
       )}
-
-      {view === 'list' ? (
-        <ArenaList
-          arenas={arenas}
-          selected={selected}
-          setSelected={setSelected}
-          filter={filter}
-          setFilter={setFilter}
-          onNew={() => setWizardOpen(true)}
-          onViewCanvas={() => setView('orchestrator')}
-        />
-      ) : (
-        <Orchestrator arena={selected} onBack={() => setView('list')} />
-      )}
+      <ArenaList
+        arenas={arenas}
+        selected={selected}
+        setSelected={setSelected}
+        filter={filter}
+        setFilter={setFilter}
+        onNew={() => setWizardOpen(true)}
+      />
     </>
   )
 }
@@ -167,7 +155,6 @@ function ArenaList({
   filter,
   setFilter,
   onNew,
-  onViewCanvas,
 }: {
   arenas: Arena[]
   selected: Arena
@@ -175,7 +162,6 @@ function ArenaList({
   filter: 'All' | 'Running' | 'Paused' | 'Pending'
   setFilter: (f: 'All' | 'Running' | 'Paused' | 'Pending') => void
   onNew: () => void
-  onViewCanvas: () => void
 }) {
   const filtered = arenas.filter(a => {
     if (filter === 'All')     return true
@@ -192,61 +178,42 @@ function ArenaList({
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left: table */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <div>
-            <h1 className="text-base font-semibold text-white">Arenas</h1>
-            <p className="text-[11px] text-muted">Active reinforcement learning sessions</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onViewCanvas}
-              className="text-[12px] px-3 py-1.5 border border-border text-muted hover:text-white transition-colors"
-            >
-              Canvas
-            </button>
-            <button
-              onClick={onNew}
-              className="flex items-center gap-1.5 bg-purple hover:bg-purple/80 text-white text-xs font-medium px-3 py-1.5 transition-colors"
-            >
-              <span className="text-base leading-none">+</span> New Arena
-            </button>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minHeight: '100%' }}>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Training <em>Arenas</em></h1>
+          <p className="page-sub">Active reinforcement learning sessions</p>
         </div>
-
-        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border">
-          {(['All', 'Running', 'Paused', 'Pending'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`text-[11px] px-2.5 py-1 transition-colors ${filter === f ? 'bg-border text-white' : 'bg-surface-2 text-muted hover:text-white'}`}
-            >
-              {f}
-            </button>
-          ))}
-          <div className="flex-1" />
-          <span className="text-[11px] text-muted">
-            {counts.running} running · {counts.paused} paused
-            {counts.pending > 0 && ` · ${counts.pending} pending`}
-          </span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onNew} className="btn sm">+ New Arena</button>
         </div>
+      </div>
 
-        <div className="flex-1 overflow-y-auto">
+      {/* Filter bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {(['All', 'Running', 'Paused', 'Pending'] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '5px 14px', borderRadius: 999, background: filter === f ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${filter === f ? 'var(--accent)' : 'var(--border)'}`, color: filter === f ? 'var(--accent-2)' : 'var(--text-2)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {f}
+          </button>
+        ))}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>
+          {counts.running} running · {counts.paused} paused{counts.pending > 0 && ` · ${counts.pending} pending`}
+        </span>
+      </div>
+
+      {/* Table + detail */}
+      <div style={{ display: 'flex', gap: 18, alignItems: 'stretch', flex: 1 }}>
+        <div className="card" style={{ flex: 1, overflow: 'hidden', padding: 0 }}>
           {filtered.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-[12px] text-muted">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 128, fontSize: 12, color: 'var(--text-3)' }}>
               No arenas match this filter
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-space border-b border-border">
-                <tr>
+            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {['Arena', 'Model', 'Gym', 'Reward', 'Loss', 'Uptime'].map((h, i) => (
-                    <th
-                      key={h}
-                      className={`text-[10px] text-muted font-medium px-4 py-2.5 uppercase tracking-wider ${i >= 3 ? 'text-right' : 'text-left'}`}
-                    >
+                    <th key={h} style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 500, padding: '10px 14px', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: i >= 3 ? 'right' : 'left' }}>
                       {h}
                     </th>
                   ))}
@@ -257,48 +224,43 @@ function ArenaList({
                   <tr
                     key={a.id}
                     onClick={() => setSelected(a)}
-                    className={`border-b border-border cursor-pointer transition-colors ${selected.id === a.id ? 'bg-purple/10 border-l-2 border-l-purple' : 'hover:bg-surface-2'}`}
+                    style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: selected.id === a.id ? 'var(--accent-soft)' : 'transparent', borderLeft: selected.id === a.id ? '2px solid var(--accent)' : '2px solid transparent' }}
+                    onMouseEnter={e => { if (selected.id !== a.id) (e.currentTarget as HTMLElement).style.background = 'var(--surface-hi)'; }}
+                    onMouseLeave={e => { if (selected.id !== a.id) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                   >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <StatusDot status={a.status} />
                         <div>
-                          <div className="text-[13px] font-medium text-white">{a.name}</div>
-                          <div className="text-[10px] font-mono text-muted">{a.id}</div>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
+                          <div className="mono" style={{ fontSize: 10, color: 'var(--text-3)' }}>{a.id}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-[12px] text-gray-400">{a.model}</td>
-                    <td className="px-4 py-3 text-[12px] text-gray-400">{a.gym}</td>
-                    <td className="px-4 py-3 text-right text-[12px] font-mono text-white">
-                      {a.status === 'pending' ? '—' : a.reward.toFixed(1)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-[12px] font-mono text-muted">
-                      {a.status === 'pending' ? '—' : a.loss.toFixed(3)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-[11px] text-muted">{a.uptime}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-2)' }}>{a.model}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-2)' }}>{a.gym}</td>
+                    <td className="mono" style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12 }}>{a.status === 'pending' ? '—' : a.reward.toFixed(1)}</td>
+                    <td className="mono" style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{a.status === 'pending' ? '—' : a.loss.toFixed(3)}</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, color: 'var(--text-3)' }}>{a.uptime}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
         </div>
-      </div>
 
-      {/* Right: detail panel */}
-      <ArenaDetailPanel arena={selected} />
+        {/* Right: detail panel — 360px wide, stretches full height */}
+        <div style={{ width: 360, flexShrink: 0 }}>
+          <ArenaDetailPanel arena={selected} />
+        </div>
+      </div>
     </div>
   )
 }
 
 function StatusDot({ status }: { status: ArenaStatus }) {
-  const cls = {
-    running: 'bg-green animate-pulse',
-    paused:  'bg-amber',
-    pending: 'bg-blue-400 animate-pulse',
-    failed:  'bg-red-500',
-  }[status]
-  return <span className={`w-1.5 h-1.5 shrink-0 ${cls}`} />
+  const color = { running: 'var(--ok)', paused: 'var(--warn)', pending: 'var(--info)', failed: 'var(--danger)' }[status]
+  return <span className="dot" style={{ background: color, flexShrink: 0 }} />
 }
 
 // ── Arena detail panel ─────────────────────────────────────────
@@ -307,228 +269,67 @@ function ArenaDetailPanel({ arena }: { arena: Arena }) {
   const [taskOpen, setTaskOpen] = useState(false)
 
   return (
-    <div className="w-64 border-l border-border bg-surface shrink-0 flex flex-col">
-      <div className="px-4 py-3 border-b border-border">
-        <div className="text-sm font-semibold text-white">{arena.name}</div>
-        <div className="flex items-center gap-1.5 mt-1">
+    <div className="card" style={{ height: '100%', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>{arena.name}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
           <StatusDot status={arena.status} />
-          <span className="text-[11px] text-muted capitalize">
+          <span style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'capitalize' }}>
             {arena.status} · {arena.uptime}
           </span>
         </div>
       </div>
 
-      <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14, flex: 1, overflowY: 'auto' }}>
         {arena.status === 'pending' ? (
-          <div className="p-3 border border-blue-400/20 bg-blue-400/5">
-            <p className="text-[11px] text-blue-400/80">
+          <div style={{ padding: 10, border: '1px solid var(--info)', borderRadius: 8, background: 'oklch(0.75 0.12 230 / 0.08)' }}>
+            <p style={{ fontSize: 11, color: 'var(--info)' }}>
               Arena queued. Awaiting 0G Compute executor deployment.
             </p>
             {arena.taskJson && (
-              <button
-                onClick={() => setTaskOpen(t => !t)}
-                className="mt-2 text-[10px] text-muted hover:text-white transition-colors"
-              >
+              <button onClick={() => setTaskOpen(t => !t)} style={{ marginTop: 6, fontSize: 10, color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                 {taskOpen ? '▲ Hide' : '▼ View'} task.json
               </button>
             )}
             {taskOpen && arena.taskJson && (
-              <pre className="mt-2 text-[9px] font-mono text-green/70 overflow-x-auto max-h-48 overflow-y-auto leading-relaxed">
+              <pre style={{ marginTop: 6, fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--ok)', overflowX: 'auto', maxHeight: 192, overflowY: 'auto', lineHeight: 1.6 }}>
                 {JSON.stringify(arena.taskJson, null, 2)}
               </pre>
             )}
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-2">
-              <Metric label="Reward" value={arena.reward.toFixed(1)} color="text-green" />
-              <Metric label="Loss"   value={arena.loss.toFixed(3)}   color="text-amber"  />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Metric label="Reward" value={arena.reward.toFixed(1)} color="var(--ok)" />
+              <Metric label="Loss"   value={arena.loss.toFixed(3)}   color="var(--warn)" />
             </div>
             <div>
-              <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Reward Curve</div>
-              <MiniChart color="#22c55e" />
+              <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Reward Curve</div>
+              <MiniChart color="oklch(0.78 0.14 150)" />
             </div>
             <div>
-              <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Loss Curve</div>
-              <MiniChart color="#f59e0b" descending />
+              <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Loss Curve</div>
+              <MiniChart color="oklch(0.80 0.14 75)" descending />
             </div>
           </>
         )}
 
-        <div className="space-y-1.5">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {[
             ['Judge', arena.judge],
             ['Gym',   arena.gym],
             ...(arena.status !== 'pending' ? [['LR', '3e-5'], ['KL', '0.02']] : []),
           ].map(([k, v]) => (
-            <div key={k} className="flex justify-between text-[11px]">
-              <span className="text-muted">{k}</span>
-              <span className="text-white truncate ml-2 max-w-[100px] text-right">{v}</span>
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+              <span style={{ color: 'var(--text-3)' }}>{k}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', marginLeft: 8, maxWidth: 100, textAlign: 'right' }}>{v}</span>
             </div>
           ))}
         </div>
 
         {arena.status !== 'pending' && (
-          <button className="w-full text-[12px] py-1.5 bg-purple hover:bg-purple/80 text-white font-medium transition-colors">
-            Deploy to Swarm
-          </button>
+          <button className="btn sm" style={{ width: '100%', justifyContent: 'center' }}>Deploy to Swarm</button>
         )}
-      </div>
-    </div>
-  )
-}
-
-// ── Orchestrator canvas (job status view) ─────────────────────
-
-type ONodeType = 'baseModel' | 'gym' | 'database' | 'server' | 'compute' | 'deploy'
-interface ONodeData extends Record<string, unknown> { label: string; sub?: string; nodeType: ONodeType }
-
-const nodeColors: Record<ONodeType, string> = {
-  baseModel: '#7c3aed', gym: '#22c55e', database: '#3b82f6',
-  server: '#f59e0b',    compute: '#f43f5e', deploy: '#a855f7',
-}
-const nodeIcons: Record<ONodeType, string> = {
-  baseModel: '🤖', gym: '🏟️', database: '🗄️',
-  server: '🌐',    compute: '⚡', deploy: '🚀',
-}
-
-function OrchestratorNode({ data }: { data: ONodeData }) {
-  const color = nodeColors[data.nodeType]
-  return (
-    <div className="relative border overflow-hidden min-w-36"
-      style={{ backgroundColor: '#0e1018', borderColor: color + '60', boxShadow: `0 0 12px ${color}22` }}
-    >
-      <Handle type="target" position={Position.Left} style={{ background: color, border: 'none', width: 8, height: 8 }} />
-      <div className="flex items-center gap-2 px-3 py-1.5" style={{ backgroundColor: color + '22', borderBottom: `1px solid ${color}40` }}>
-        <span className="text-sm">{nodeIcons[data.nodeType]}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color }}>{data.nodeType}</span>
-      </div>
-      <div className="px-3 py-2">
-        <div className="text-[12px] font-semibold text-white">{data.label}</div>
-        {data.sub && <div className="text-[10px] text-gray-500 mt-0.5">{data.sub}</div>}
-      </div>
-      <Handle type="source" position={Position.Right} style={{ background: color, border: 'none', width: 8, height: 8 }} />
-    </div>
-  )
-}
-
-const orchestratorNodeTypes: NodeTypes = { orchestrator: OrchestratorNode }
-
-const paletteItems: { type: ONodeType; label: string; desc: string }[] = [
-  { type: 'baseModel', label: 'Base Model',    desc: 'Foundation LLM to fine-tune' },
-  { type: 'gym',       label: 'Gym',           desc: 'Training environment'         },
-  { type: 'database',  label: 'Database',      desc: 'External context DB'          },
-  { type: 'server',    label: 'Server',        desc: 'API / tool server'            },
-  { type: 'compute',   label: 'Compute Spec',  desc: 'GPU allocation spec'          },
-  { type: 'deploy',    label: 'Deploy',        desc: 'Push to 0G swarm'            },
-]
-
-function buildTopologyNodes(arena: Arena | null): Node[] {
-  if (!arena?.taskJson) {
-    return [
-      { id: 'bm1', type: 'orchestrator', position: { x: 80,  y: 120 }, data: { label: 'Llama-3-7B',       sub: '7B params · fp16',  nodeType: 'baseModel' } },
-      { id: 'gy1', type: 'orchestrator', position: { x: 340, y: 60  }, data: { label: 'PythonCoding',      sub: 'v3.1 · Open',       nodeType: 'gym'       } },
-      { id: 'gy2', type: 'orchestrator', position: { x: 340, y: 180 }, data: { label: 'MathEnv',           sub: 'v1.0 · Open',       nodeType: 'gym'       } },
-      { id: 'sv1', type: 'orchestrator', position: { x: 340, y: 300 }, data: { label: 'GitHub API',        sub: 'REST · OAuth',      nodeType: 'server'    } },
-      { id: 'cp1', type: 'orchestrator', position: { x: 600, y: 120 }, data: { label: '4x A100 80G',       sub: '320 GB VRAM',       nodeType: 'compute'   } },
-      { id: 'dp1', type: 'orchestrator', position: { x: 840, y: 120 }, data: { label: 'Deploy to Swarm',   sub: '0G Network',        nodeType: 'deploy'    } },
-    ]
-  }
-  const t = arena.taskJson
-  const modelLabel = t.base_model.ref.split('/').pop() ?? t.base_model.ref
-  const gymLabel   = t.gym.image_ref.length > 12 ? t.gym.image_ref.slice(0, 10) + '…' : t.gym.image_ref
-  return [
-    { id: 'bm1', type: 'orchestrator', position: { x: 80,  y: 120 }, data: { label: modelLabel, sub: `${t.base_model.quantization} · ${t.base_model.dtype}`, nodeType: 'baseModel' } },
-    { id: 'gy1', type: 'orchestrator', position: { x: 340, y: 120 }, data: { label: gymLabel,   sub: 'gym bundle',                                           nodeType: 'gym'       } },
-    { id: 'cp1', type: 'orchestrator', position: { x: 580, y: 120 }, data: { label: `${t.algorithm.name.toUpperCase()} · ep${t.algorithm.num_episodes}`, sub: `lr ${t.algorithm.learning_rate}`, nodeType: 'compute' } },
-    { id: 'dp1', type: 'orchestrator', position: { x: 820, y: 120 }, data: { label: 'Deploy to 0G',  sub: t.output.destination,                             nodeType: 'deploy'    } },
-  ]
-}
-
-const topologyEdges = (hasTask: boolean) => hasTask
-  ? [
-      { id: 'e1', source: 'bm1', target: 'gy1', animated: true, style: { stroke: '#7c3aed' } },
-      { id: 'e2', source: 'gy1', target: 'cp1', animated: true, style: { stroke: '#22c55e' } },
-      { id: 'e3', source: 'cp1', target: 'dp1', animated: true, style: { stroke: '#f43f5e' } },
-    ]
-  : [
-      { id: 'e1', source: 'bm1', target: 'gy1', animated: true, style: { stroke: '#7c3aed' } },
-      { id: 'e2', source: 'bm1', target: 'gy2', animated: true, style: { stroke: '#7c3aed' } },
-      { id: 'e3', source: 'bm1', target: 'sv1', animated: true, style: { stroke: '#7c3aed' } },
-      { id: 'e4', source: 'gy1', target: 'cp1', animated: true, style: { stroke: '#22c55e' } },
-      { id: 'e5', source: 'gy2', target: 'cp1', animated: true, style: { stroke: '#22c55e' } },
-      { id: 'e6', source: 'cp1', target: 'dp1', animated: true, style: { stroke: '#f43f5e' } },
-    ]
-
-function Orchestrator({ arena, onBack }: { arena: Arena | null; onBack: () => void }) {
-  const initNodes = buildTopologyNodes(arena)
-  const initEdges = topologyEdges(!!arena?.taskJson)
-  const [nodes, , onNodesChange] = useNodesState(initNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges)
-
-  const onConnect = useCallback(
-    (c: Connection) => setEdges(es => addEdge({ ...c, animated: true, style: { stroke: '#7c3aed' } }, es)),
-    [setEdges],
-  )
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-border bg-surface shrink-0">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-[12px] text-muted hover:text-white transition-colors">
-          ← Arenas
-        </button>
-        <div className="w-px h-4 bg-border" />
-        <span className="text-sm font-semibold text-white">
-          {arena?.name ?? 'Arena Topology'}
-        </span>
-        {arena && (
-          <span className="flex items-center gap-1 text-[11px] text-muted">
-            <StatusDot status={arena.status} />
-            {arena.status}
-          </span>
-        )}
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-48 border-r border-border bg-surface flex flex-col shrink-0">
-          <div className="px-3 py-2.5 border-b border-border">
-            <span className="text-[10px] text-muted uppercase tracking-wider">Components</span>
-          </div>
-          <div className="p-2 space-y-1.5 overflow-y-auto">
-            {paletteItems.map(item => (
-              <div
-                key={item.type}
-                draggable
-                onDragStart={e => e.dataTransfer.setData('nodeType', item.type)}
-                className="flex items-start gap-2 p-2.5 border border-border bg-surface-2 hover:border-gray-600 cursor-grab active:cursor-grabbing transition-colors"
-              >
-                <span className="text-base leading-none mt-0.5">{nodeIcons[item.type]}</span>
-                <div>
-                  <div className="text-[11px] font-medium text-white">{item.label}</div>
-                  <div className="text-[10px] text-muted leading-tight">{item.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1">
-          <ReactFlow
-            nodes={nodes} edges={edges}
-            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
-            nodeTypes={orchestratorNodeTypes}
-            fitView snapToGrid snapGrid={[16, 16]}
-            style={{ background: '#08090e' }}
-            defaultEdgeOptions={{ animated: true, style: { stroke: '#1e2030', strokeWidth: 2 } }}
-          >
-            <Background color="#1e2030" gap={24} size={1} />
-            <Controls style={{ background: '#0e1018', border: '1px solid #1e2030' }} />
-            <MiniMap
-              style={{ background: '#0e1018', border: '1px solid #1e2030' }}
-              nodeColor={n => nodeColors[(n.data as ONodeData).nodeType] + '88'}
-            />
-          </ReactFlow>
-        </div>
       </div>
     </div>
   )
@@ -787,20 +588,21 @@ function NewArenaWizard({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
       onClick={onClose}
     >
       <div
-        className="bg-surface border border-border rounded-xl w-[620px] max-h-[88vh] flex flex-col"
+        className="card"
+        style={{ width: 620, maxHeight: '88vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div>
-            <h2 className="text-sm font-semibold text-white">New Arena</h2>
-            <p className="text-[11px] text-muted">Configure your RL training run</p>
+            <h2 style={{ fontSize: 15, fontWeight: 600 }}>New Arena</h2>
+            <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Configure your RL training run</p>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} style={{ fontSize: 20, lineHeight: 1, color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
         </div>
 
         {/* Step indicator */}
@@ -1201,9 +1003,9 @@ function selectCls() { return `${inputBase} border-border focus:border-purple/60
 
 function Metric({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="bg-surface-2 border border-border p-2.5">
-      <div className="text-[10px] text-muted">{label}</div>
-      <div className={`text-base font-mono font-bold ${color}`}>{value}</div>
+    <div style={{ background: 'var(--surface-hi)', border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{label}</div>
+      <div className="mono" style={{ fontSize: 18, fontWeight: 700, color }}>{value}</div>
     </div>
   )
 }

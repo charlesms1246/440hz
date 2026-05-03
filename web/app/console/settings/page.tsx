@@ -7,25 +7,10 @@ import { useProfileStore, type Persona } from "@/lib/profileStore";
 import { useGymStore } from "@/lib/gymStore";
 import { uploadProfilePicture } from "@/lib/utils/upload0g";
 
-const PERSONA_META: { id: Persona; label: string; description: string; color: string }[] = [
-  {
-    id: "tuner",
-    label: "LLM Tuner",
-    description: "Train models using gym environments",
-    color: "border-purple/40 bg-purple/10 text-purple-400",
-  },
-  {
-    id: "builder",
-    label: "Gym Builder",
-    description: "Build and publish training environments",
-    color: "border-green/40 bg-green/10 text-green",
-  },
-  {
-    id: "provider",
-    label: "Compute Provider",
-    description: "Contribute compute and earn rewards",
-    color: "border-amber/40 bg-amber/10 text-amber",
-  },
+const PERSONA_META: { id: Persona; label: string; description: string; activeColor: string }[] = [
+  { id: "tuner",    label: "LLM Tuner",         description: "Train models using gym environments",    activeColor: 'var(--accent)' },
+  { id: "builder",  label: "Gym Builder",        description: "Build and publish training environments", activeColor: 'var(--ok)' },
+  { id: "provider", label: "Compute Provider",   description: "Contribute compute and earn rewards",    activeColor: 'var(--warn)' },
 ];
 
 export default function SettingsPage() {
@@ -83,175 +68,127 @@ export default function SettingsPage() {
   const addrShort = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "—";
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 680, margin: '0 auto' }}>
+      <div className="page-head" style={{ marginBottom: 0 }}>
+        <h1 className="page-title"><em>Profile</em> & Settings</h1>
+      </div>
 
-        {/* ── Profile card ─────────────────────────────────────── */}
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          {/* Banner */}
-          <div className="h-20 bg-gradient-to-r from-purple/20 via-purple/10 to-transparent" />
-
-          {/* Avatar + identity */}
-          <div className="px-6 pb-6">
-            <div className="flex items-end justify-between -mt-10 mb-4">
-              {/* Avatar */}
-              <div className="relative">
-                {profilePicture ? (
-                  <img
-                    src={profilePicture}
-                    alt="avatar"
-                    className="w-20 h-20 rounded-full object-cover border-4 border-surface"
-                  />
-                ) : (
-                  <div className="w-20 h-20 rounded-full bg-purple border-4 border-surface flex items-center justify-center text-3xl font-bold text-white">
-                    {initial}
-                  </div>
-                )}
-                {picSaved && (
-                  <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-green rounded-full flex items-center justify-center text-[10px] text-white font-bold">✓</span>
-                )}
-              </div>
-
-              {/* Change photo */}
-              <div className="flex flex-col items-end gap-1">
-                <button
-                  onClick={() => picInputRef.current?.click()}
-                  disabled={picUploading}
-                  className="text-[11px] px-3 py-1.5 border border-border rounded-lg text-muted hover:text-white hover:border-purple/40 transition-colors disabled:opacity-50"
-                >
-                  {picUploading ? "Uploading…" : "Change photo"}
-                </button>
-                {picError && <p className="text-[10px] text-signal-red">{picError}</p>}
-                <input ref={picInputRef} type="file" accept="image/*" className="hidden" onChange={handlePicChange} />
-              </div>
-            </div>
-
-            {/* Name + ENS */}
-            <div className="space-y-0.5 mb-4">
-              <h2 className="text-lg font-bold text-white">{username || "—"}</h2>
-              {ensName ? (
-                <p className="text-[12px] font-mono text-purple-400">{ensName}</p>
+      {/* Profile card */}
+      <div className="card" style={{ overflow: 'hidden', padding: 0 }}>
+        <div style={{ height: 72, background: 'linear-gradient(135deg, var(--accent-soft), transparent)' }} />
+        <div style={{ padding: '0 24px 24px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: -36, marginBottom: 16 }}>
+            <div style={{ position: 'relative' }}>
+              {profilePicture ? (
+                <img src={profilePicture} alt="avatar" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--surface-solid)' }} />
               ) : (
-                <p className="text-[12px] text-muted">No ENS name — complete onboarding</p>
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, var(--accent-2), var(--accent))', border: '3px solid var(--surface-solid)', display: 'grid', placeItems: 'center', fontSize: 28, fontWeight: 700, color: 'white' }}>{initial}</div>
               )}
-              <p className="text-[11px] font-mono text-muted">{addrShort}</p>
+              {picSaved && <span style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: 'var(--ok)', display: 'grid', placeItems: 'center', fontSize: 10, color: 'white', fontWeight: 700 }}>✓</span>}
             </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-3">
-              <StatPill label="Gyms saved" value={totalGyms} />
-              <StatPill label="Published" value={publishedGyms} accent />
-              <StatPill label="Version saves" value={totalVersions} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <button onClick={() => picInputRef.current?.click()} disabled={picUploading} className="btn ghost sm">
+                {picUploading ? "Uploading…" : "Change photo"}
+              </button>
+              {picError && <p style={{ fontSize: 10, color: 'var(--danger)' }}>{picError}</p>}
+              <input ref={picInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePicChange} />
             </div>
+          </div>
+          <h2 style={{ fontSize: 18, fontWeight: 700 }}>{username || "—"}</h2>
+          {ensName ? (
+            <p className="mono" style={{ fontSize: 12, color: 'var(--accent-2)', marginTop: 2 }}>{ensName}</p>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>No ENS name — complete onboarding</p>
+          )}
+          <p className="mono" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{addrShort}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 16 }}>
+            <StatPill label="Gyms saved" value={totalGyms} />
+            <StatPill label="Published" value={publishedGyms} accent />
+            <StatPill label="Version saves" value={totalVersions} />
           </div>
         </div>
-
-        {/* ── Role ────────────────────────────────────────────── */}
-        <Section title="Role">
-          <p className="text-[11px] text-muted mb-4">
-            Your role sets your default dashboard view. You can also toggle it anytime in the header.
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            {PERSONA_META.map(p => (
-              <button
-                key={p.id}
-                onClick={() => handlePersonaChange(p.id)}
-                className={`flex flex-col gap-2 p-4 border rounded-xl text-left transition-all ${
-                  persona === p.id
-                    ? p.color
-                    : "border-border bg-surface-2 hover:border-gray-500 text-gray-400"
-                }`}
-              >
-                <span className={`text-[12px] font-semibold ${persona === p.id ? "" : "text-white"}`}>
-                  {p.label}
-                </span>
-                <span className="text-[10px] leading-relaxed opacity-70">{p.description}</span>
-              </button>
-            ))}
-          </div>
-        </Section>
-
-        {/* ── Wallet ──────────────────────────────────────────── */}
-        <Section title="Wallet">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <p className="text-sm font-mono text-white break-all">{address ?? "—"}</p>
-              <p className="text-[11px] text-muted">
-                Chain ID: {chainId ?? "—"} · 0G Galileo Testnet
-              </p>
-            </div>
-            <a
-              href={`https://chainscan-galileo.0g.ai/address/${address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 ml-4 text-[11px] text-purple-400 hover:text-purple-300 transition-colors"
-            >
-              View ↗
-            </a>
-          </div>
-        </Section>
-
-        {/* ── Provider node (provider persona only) ───────────── */}
-        {persona === "provider" && (
-          <Section title="Provider Node">
-            <p className="text-[11px] text-muted leading-relaxed">
-              Configure your compute node endpoint, models, and API keys in the{" "}
-              <code className="font-mono text-purple-400 bg-surface-2 px-1 py-0.5 rounded">.env</code>{" "}
-              file on your provider machine. The node registers on-chain automatically on first start.
-            </p>
-            <div className="mt-3 bg-surface-2 border border-border rounded-lg px-3 py-2.5 text-[11px] font-mono text-muted space-y-1">
-              <p><span className="text-purple-400">PRIVATE_KEY</span>=your_wallet_key</p>
-              <p><span className="text-purple-400">PROVIDER_ENDPOINT</span>=https://your-node.example.com</p>
-              <p><span className="text-purple-400">PROVIDER_MODELS</span>=llama3-8b,mistral-7b</p>
-            </div>
-            <p className="text-[10px] text-muted mt-2">Edge node single-command deploy coming soon.</p>
-          </Section>
-        )}
-
-        {/* ── Account ─────────────────────────────────────────── */}
-        <Section title="Account">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[12px] text-white font-medium">Theme</p>
-              <p className="text-[11px] text-muted">Dark mode only · Light theme coming soon</p>
-            </div>
-            <span className="text-[11px] px-2.5 py-1 border border-border rounded-lg text-muted">Dark</span>
-          </div>
-
-          <div className="border-t border-border mt-5 pt-5 flex items-start justify-between">
-            <div>
-              <p className="text-[12px] text-white font-medium">Sign out</p>
-              <p className="text-[11px] text-muted mt-0.5">
-                Disconnects your wallet and clears your local session. On-chain data is preserved.
-              </p>
-            </div>
-            <button
-              onClick={handleDisconnect}
-              className="shrink-0 ml-4 text-[12px] font-medium px-4 py-1.5 border border-signal-red/40 text-signal-red hover:bg-signal-red/10 rounded-lg transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
-        </Section>
-
       </div>
+
+      {/* Role */}
+      <Section title="Role">
+        <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 14 }}>
+          Your role sets your default dashboard view.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          {PERSONA_META.map(p => (
+            <button key={p.id} onClick={() => handlePersonaChange(p.id)} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 14, border: `1px solid ${persona === p.id ? p.activeColor : 'var(--border)'}`, borderRadius: 12, textAlign: 'left', background: persona === p.id ? `${p.activeColor}18` : 'var(--surface-hi)', cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: persona === p.id ? p.activeColor : 'var(--text)' }}>{p.label}</span>
+              <span style={{ fontSize: 10, lineHeight: 1.5, color: 'var(--text-3)' }}>{p.description}</span>
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      {/* Wallet */}
+      <Section title="Wallet">
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <p className="mono" style={{ fontSize: 13, wordBreak: 'break-all' }}>{address ?? "—"}</p>
+            <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Chain ID: {chainId ?? "—"} · 0G Galileo Testnet</p>
+          </div>
+          <a href={`https://chainscan-galileo.0g.ai/address/${address}`} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0, marginLeft: 16, fontSize: 11, color: 'var(--accent-2)' }}>
+            View ↗
+          </a>
+        </div>
+      </Section>
+
+      {/* Provider node */}
+      {persona === "provider" && (
+        <Section title="Provider Node">
+          <p style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.6 }}>
+            Configure your compute node endpoint, models, and API keys in the{" "}
+            <code className="mono" style={{ color: 'var(--accent-2)', background: 'var(--surface-hi)', padding: '1px 5px', borderRadius: 4 }}>.env</code>{" "}
+            file on your provider machine. The node registers on-chain automatically on first start.
+          </p>
+          <div className="mono" style={{ marginTop: 10, background: 'var(--surface-hi)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 11, color: 'var(--text-3)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <p><span style={{ color: 'var(--accent-2)' }}>PRIVATE_KEY</span>=your_wallet_key</p>
+            <p><span style={{ color: 'var(--accent-2)' }}>PROVIDER_ENDPOINT</span>=https://your-node.example.com</p>
+            <p><span style={{ color: 'var(--accent-2)' }}>PROVIDER_MODELS</span>=llama3-8b,mistral-7b</p>
+          </div>
+          <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 8 }}>Edge node single-command deploy coming soon.</p>
+        </Section>
+      )}
+
+      {/* Account */}
+      <Section title="Account">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 500 }}>Theme</p>
+            <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Light/dark mode — toggle in the top toolbar</p>
+          </div>
+        </div>
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 18, paddingTop: 18, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 500 }}>Sign out</p>
+            <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Disconnects your wallet and clears your local session. On-chain data is preserved.</p>
+          </div>
+          <button onClick={handleDisconnect} className="btn ghost sm" style={{ flexShrink: 0, marginLeft: 16, color: 'var(--danger)', borderColor: 'oklch(0.68 0.21 25 / 0.4)' }}>
+            Sign out
+          </button>
+        </div>
+      </Section>
     </div>
   );
 }
 
 function StatPill({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
-    <div className="bg-surface-2 border border-border rounded-lg px-3 py-2 text-center">
-      <p className={`text-lg font-bold font-mono ${accent ? "text-purple-400" : "text-white"}`}>{value}</p>
-      <p className="text-[10px] text-muted mt-0.5">{label}</p>
+    <div style={{ background: 'var(--surface-hi)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' }}>
+      <p className="mono" style={{ fontSize: 18, fontWeight: 700, color: accent ? 'var(--accent-2)' : 'var(--text)' }}>{value}</p>
+      <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{label}</p>
     </div>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-surface border border-border rounded-xl p-5">
-      <h2 className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-4 pb-3 border-b border-border">
+    <div className="card" style={{ padding: 20 }}>
+      <h2 style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
         {title}
       </h2>
       {children}

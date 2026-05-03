@@ -163,95 +163,33 @@ export default function OnboardingPage() {
   const walletName = injectedConnector?.name ?? "Browser Wallet";
 
   return (
-    <div
-      className="theme-shell min-h-screen bg-space flex items-center justify-center p-6"
-      style={{ color: "var(--text)" }}
-    >
-      {/* Background grid */}
-      <div
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle, rgba(217, 74, 239, 0.15) 2px, transparent 1px)",
-          backgroundSize: "32px 32px",
-        }}
-      />
+    <div className="app-shell" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div className="ambient" />
+      <div className="grain" />
 
       {/* Theme toggle — top right */}
-      <div
-        style={{ position: "fixed", top: "1.2vh", right: "1.2vw", zIndex: 10 }}
-      >
-        <ThemeToggle size={32} />
+      <div className="float-tools">
+        <div className="float-btn"><ThemeToggle size={16} /></div>
       </div>
 
-      <div className="relative w-full max-w-lg">
+      <div style={{ position: 'relative', width: '100%', maxWidth: 520 }}>
         {/* Logo */}
-        <div className="text-center" style={{ marginBottom: "2.5vh" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              marginBottom: "3vh",
-            }}
-          >
-            <Logo440hz height={50} />
-          </div>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <Logo440hz height={42} />
         </div>
 
         {/* Step indicator */}
-        <div
-          className="flex items-center gap-2"
-          style={{ marginBottom: "3vh" }}
-        >
-          {["Connect Wallet", "Profile", "Select Role", "Network"].map(
-            (l, i) => (
-              <div
-                key={i}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.4vh",
-                }}
-              >
-                <div
-                  style={{
-                    height: "0.5vh",
-                    borderRadius: "9999px",
-                    backgroundColor:
-                      i <= step
-                        ? "var(--color-highlight)"
-                        : "var(--color-border)",
-                    transition: "all 0.3s",
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: ".9vw",
-                    color:
-                      i === step
-                        ? "var(--color-highlight)"
-                        : "var(--color-muted)",
-                  }}
-                >
-                  {l}
-                </span>
-              </div>
-            ),
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 24 }}>
+          {["Connect Wallet", "Profile", "Select Role", "Network"].map((l, i) => (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ height: 3, borderRadius: 9999, background: i <= step ? 'var(--accent)' : 'var(--border)', transition: 'all 0.3s' }} />
+              <span style={{ fontSize: 11, color: i === step ? 'var(--accent-2)' : 'var(--text-3)' }}>{l}</span>
+            </div>
+          ))}
         </div>
 
         {/* Step cards */}
-        <div
-          style={{
-            backgroundColor: "var(--bg)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "14px",
-            padding: "3vh 2.5vw",
-            height: "60vh",
-            overflowY: "auto",
-          }}
-        >
+        <div className="card" style={{ padding: 28, minHeight: 360, overflowY: 'auto' }}>
           {/* Step 0: Connect Wallet */}
           {step === 0 && (
             <div

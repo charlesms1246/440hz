@@ -220,54 +220,39 @@ export default function ComputePage() {
     : "—";
 
   return (
-    <div className="p-6 space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="page-head">
         <div>
-          <h1 className="text-base font-semibold text-white">Compute</h1>
-          <p className="text-[11px] text-muted">
-            Engine room — system performance and 0G integration
-          </p>
+          <h1 className="page-title"><em>Compute</em> Engine</h1>
+          <p className="page-sub">System performance and 0G integration</p>
         </div>
-        <div className={`flex items-center gap-2 text-[11px] font-mono px-3 py-1 border ${apiOnline ? "border-green/40 text-green" : "border-signal-red/40 text-signal-red"}`}>
-          <span className={`w-1.5 h-1.5 ${apiOnline ? "bg-green" : "bg-signal-red"} animate-pulse`} />
+        <span className="pill" style={{ alignSelf: 'center', color: apiOnline ? 'var(--ok)' : 'var(--danger)', borderColor: apiOnline ? 'oklch(0.78 0.14 150 / 0.4)' : 'oklch(0.68 0.21 25 / 0.4)' }}>
+          <span className="dot" style={{ background: apiOnline ? 'var(--ok)' : 'var(--danger)' }} />
           {apiOnline ? "Provider online" : "Provider offline"}
-        </div>
+        </span>
       </div>
 
       {/* Provider info card */}
       {providerInfo && (
-        <div className="bg-surface border border-border p-4 flex items-center justify-between gap-4">
-          <div className="space-y-0.5">
-            <div className="text-[11px] text-muted">Provider address</div>
-            <div className="font-mono text-[12px] text-white">{providerInfo.address}</div>
+        <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 2 }}>Provider address</div>
+            <div className="mono" style={{ fontSize: 12 }}>{providerInfo.address}</div>
           </div>
-          <div className="space-y-0.5">
-            <div className="text-[11px] text-muted">Endpoint</div>
-            <div className="font-mono text-[12px] text-gray-400">{providerInfo.endpoint}</div>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 2 }}>Endpoint</div>
+            <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)' }}>{providerInfo.endpoint}</div>
           </div>
-          <div className="space-y-0.5">
-            <div className="text-[11px] text-muted">Models</div>
-            <div className="text-[11px] text-gray-400">{providerInfo.models.join(", ")}</div>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 2 }}>Models</div>
+            <div style={{ fontSize: 11, color: 'var(--text-2)' }}>{providerInfo.models.join(", ")}</div>
           </div>
-          <div className="flex items-center gap-2">
+          <div>
             {providerInfo.registered ? (
-              <span className="text-[11px] text-green border border-green/30 px-2 py-0.5">Registered on 0G</span>
+              <span className="pill running">Registered on 0G</span>
             ) : (
-              <button
-                onClick={async () => {
-                  setRegistering(true);
-                  try {
-                    await providerFetch(`/provider/register`, { method: "POST" });
-                    const info = await providerFetch(`/provider/info`).then((r) => r.json());
-                    setProviderInfo(info);
-                  } finally {
-                    setRegistering(false);
-                  }
-                }}
-                disabled={registering}
-                className="text-[11px] border border-purple/40 text-purple-400 px-3 py-0.5 hover:bg-purple/10 disabled:opacity-50"
-              >
+              <button onClick={async () => { setRegistering(true); try { await providerFetch(`/provider/register`, { method: "POST" }); const info = await providerFetch(`/provider/info`).then((r) => r.json()); setProviderInfo(info); } finally { setRegistering(false); } }} disabled={registering} className="btn ghost sm">
                 {registering ? "Registering…" : "Register on 0G"}
               </button>
             )}
@@ -277,18 +262,10 @@ export default function ComputePage() {
 
       {/* Active task selector */}
       {activeTasks.length > 0 && (
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted">Monitoring:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Monitoring:</span>
           {activeTasks.slice(-5).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTaskId(t.id === activeTaskId ? null : t.id)}
-              className={`text-[11px] px-2 py-0.5 border transition-colors ${
-                t.id === activeTaskId
-                  ? "border-purple/50 text-purple-400 bg-purple/10"
-                  : "border-border text-muted hover:text-white"
-              }`}
-            >
+            <button key={t.id} onClick={() => setActiveTaskId(t.id === activeTaskId ? null : t.id)} className={`btn ghost sm${t.id === activeTaskId ? ' active' : ''}`} style={{ color: t.id === activeTaskId ? 'var(--accent-2)' : undefined, borderColor: t.id === activeTaskId ? 'var(--accent)' : undefined, background: t.id === activeTaskId ? 'var(--accent-soft)' : undefined }}>
               {t.arena_name} · {t.state}
             </button>
           ))}
@@ -296,20 +273,18 @@ export default function ComputePage() {
       )}
 
       {/* Resource Monitor */}
-      <div className="bg-surface border border-border p-5">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-semibold text-white">Resource Monitor</span>
-          {!apiOnline && (
-            <span className="text-[10px] text-muted italic">connect provider daemon to see live data</span>
-          )}
+      <div className="card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>Resource Monitor</span>
+          {!apiOnline && <span style={{ fontSize: 10, color: 'var(--text-3)', fontStyle: 'italic' }}>connect provider daemon to see live data</span>}
         </div>
-        <div className="grid grid-cols-3 gap-6">
-          <ResourceBar label="GPU Utilization" value={Math.round(metrics.gpu_pct)} color="bg-purple" unit="%" />
-          <ResourceBar label="CPU Utilization" value={Math.round(metrics.cpu_pct)} color="bg-green" unit="%" />
-          <ResourceBar label="VRAM Usage" value={vramPct} color="bg-amber" unit="%" detail={vramDetail} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+          <ResourceBar label="GPU Utilization" value={Math.round(metrics.gpu_pct)} color="var(--accent)" unit="%" />
+          <ResourceBar label="CPU Utilization" value={Math.round(metrics.cpu_pct)} color="var(--ok)" unit="%" />
+          <ResourceBar label="VRAM Usage" value={vramPct} color="var(--warn)" unit="%" detail={vramDetail} />
         </div>
 
-        <div className="grid grid-cols-4 gap-3 mt-5 pt-5 border-t border-border">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--border)' }}>
           <StatChip label="RAM Used" value={`${metrics.mem_used_gb.toFixed(1)} GB`} ok />
           <StatChip label="RAM Total" value={`${metrics.mem_total_gb.toFixed(1)} GB`} ok />
           <StatChip label="VRAM Used" value={`${(metrics.vram_used_mb / 1024).toFixed(1)} GB`} ok={vramPct < 90} />
@@ -318,62 +293,54 @@ export default function ComputePage() {
       </div>
 
       {/* DA Heartbeat + Aggregation Logs */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* DA Heartbeat */}
-        <div className="bg-surface border border-border overflow-hidden flex flex-col" style={{ height: 340 }}>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 ${daLogs.length > 0 ? "bg-green animate-pulse" : "bg-border"}`} />
-              <span className="text-sm font-semibold text-white">DA Heartbeat</span>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div className="card" style={{ overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column', height: 340 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="dot" style={{ background: daLogs.length > 0 ? 'var(--ok)' : 'var(--border)' }} />
+              <span style={{ fontWeight: 600, fontSize: 13 }}>DA Heartbeat</span>
             </div>
-            <span className="text-[11px] text-muted font-mono">{daLogs.length} events</span>
+            <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{daLogs.length} events</span>
           </div>
-          <div className="flex-1 overflow-y-auto font-mono text-[11px] px-4 py-2 space-y-1">
+          <div className="mono" style={{ flex: 1, overflowY: 'auto', fontSize: 11, padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             {daLogs.length === 0 ? (
-              <div className="text-muted italic pt-2">Waiting for adapter checkpoints…</div>
-            ) : (
-              daLogs.map((row, i) => (
-                <div key={i} className="flex items-center gap-3 py-0.5">
-                  <span className="text-muted shrink-0">{row.ts}</span>
-                  <span className="text-gray-500 shrink-0">{row.hash}</span>
-                  <span className={`shrink-0 ${row.ok ? "text-green" : "text-signal-red"}`}>{row.delta}</span>
-                  <span className="text-purple-400 shrink-0">{row.shard}</span>
-                </div>
-              ))
-            )}
+              <div style={{ color: 'var(--text-3)', fontStyle: 'italic', paddingTop: 8 }}>Waiting for adapter checkpoints…</div>
+            ) : daLogs.map((row, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '2px 0' }}>
+                <span style={{ color: 'var(--text-3)', flexShrink: 0 }}>{row.ts}</span>
+                <span style={{ color: 'var(--text-3)', flexShrink: 0 }}>{row.hash}</span>
+                <span style={{ color: row.ok ? 'var(--ok)' : 'var(--danger)', flexShrink: 0 }}>{row.delta}</span>
+                <span style={{ color: 'var(--accent-2)', flexShrink: 0 }}>{row.shard}</span>
+              </div>
+            ))}
             <div ref={daEndRef} />
           </div>
         </div>
 
-        {/* Aggregation / training logs */}
-        <div className="bg-surface border border-border overflow-hidden flex flex-col" style={{ height: 340 }}>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-            <span className="text-sm font-semibold text-white">Training Logs</span>
-            <span className={`text-[11px] ${activeTaskId ? "text-green" : "text-muted"}`}>
-              {activeTaskId ? "Streaming" : "Idle"}
-            </span>
+        <div className="card" style={{ overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column', height: 340 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>Training Logs</span>
+            <span style={{ fontSize: 11, color: activeTaskId ? 'var(--ok)' : 'var(--text-3)' }}>{activeTaskId ? "Streaming" : "Idle"}</span>
           </div>
-          <div className="flex-1 overflow-y-auto text-[11px] px-4 py-2 space-y-2 font-mono">
+          <div className="mono" style={{ flex: 1, overflowY: 'auto', fontSize: 11, padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {aggLogs.length === 0 ? (
-              <div className="text-muted italic pt-2">No active task. Submit a job from the Arenas page.</div>
-            ) : (
-              aggLogs.map((row, i) => <AggLog key={i} level={row.level} msg={row.msg} />)
-            )}
+              <div style={{ color: 'var(--text-3)', fontStyle: 'italic', paddingTop: 8 }}>No active task. Submit a job from the Arenas page.</div>
+            ) : aggLogs.map((row, i) => <AggLog key={i} level={row.level} msg={row.msg} />)}
             <div ref={logsEndRef} />
           </div>
         </div>
       </div>
 
       {/* Network latency */}
-      <div className="bg-surface border border-border p-5">
-        <div className="text-sm font-semibold text-white mb-4">Network & Sharding</div>
-        <div className="grid grid-cols-4 gap-4">
+      <div className="card" style={{ padding: 20 }}>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>Network & Sharding</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
           <LatencyCard label="DA Write Latency" value="—" ok />
           <LatencyCard label="Storage Pull" value="—" ok />
           <LatencyCard label="Compute RPC" value="—" ok />
           <LatencyCard label="Peer Sync" value="—" ok />
         </div>
-        <p className="text-[10px] text-muted mt-3">
+        <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 10 }}>
           Live latency metrics will be available once the provider daemon exposes network telemetry.
         </p>
       </div>
@@ -383,44 +350,42 @@ export default function ComputePage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ResourceBar({ label, value, color, unit, detail }: {
-  label: string; value: number; color: string; unit: string; detail?: string;
-}) {
+function ResourceBar({ label, value, color, unit, detail }: { label: string; value: number; color: string; unit: string; detail?: string }) {
   return (
-    <div className="space-y-2">
-      <div className="flex justify-between items-baseline">
-        <span className="text-[12px] text-gray-400">{label}</span>
-        <span className="text-[13px] font-mono font-semibold text-white">{value}{unit}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{label}</span>
+        <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>{value}{unit}</span>
       </div>
-      <div className="h-2.5 bg-border overflow-hidden">
-        <div className={`h-full ${color} transition-all duration-500`} style={{ width: `${Math.min(value, 100)}%` }} />
+      <div className="progress-track">
+        <div className="progress-fill" style={{ width: `${Math.min(value, 100)}%`, background: color, transition: 'width 0.5s' }} />
       </div>
-      {detail && <div className="text-[10px] text-muted">{detail}</div>}
+      {detail && <div style={{ fontSize: 10, color: 'var(--text-3)' }}>{detail}</div>}
     </div>
   );
 }
 
 function StatChip({ label, value, ok }: { label: string; value: string; ok: boolean }) {
   return (
-    <div className="bg-surface-2 border border-border p-3">
-      <div className="text-[10px] text-muted mb-1">{label}</div>
-      <div className={`text-[13px] font-mono font-semibold ${ok ? "text-white" : "text-amber"}`}>{value}</div>
+    <div style={{ background: 'var(--surface-hi)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 4 }}>{label}</div>
+      <div className="mono" style={{ fontSize: 13, fontWeight: 600, color: ok ? 'var(--text)' : 'var(--warn)' }}>{value}</div>
     </div>
   );
 }
 
 function AggLog({ level, msg }: { level: "info" | "ok" | "warn"; msg: string }) {
-  const color = level === "ok" ? "text-green" : level === "warn" ? "text-amber" : "text-muted";
-  return <div className={`${color} leading-relaxed`}>{msg}</div>;
+  const color = level === "ok" ? 'var(--ok)' : level === "warn" ? 'var(--warn)' : 'var(--text-3)';
+  return <div style={{ color, lineHeight: 1.5 }}>{msg}</div>;
 }
 
 function LatencyCard({ label, value, ok }: { label: string; value: string; ok: boolean }) {
   return (
-    <div className="bg-surface-2 border border-border p-3">
-      <div className="text-[10px] text-muted mb-2">{label}</div>
-      <div className="flex items-center gap-2">
-        <span className={`w-2 h-2 shrink-0 ${ok ? "bg-green" : "bg-amber"}`} />
-        <span className="text-[16px] font-mono font-bold text-white">{value}</span>
+    <div style={{ background: 'var(--surface-hi)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 8 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="dot" style={{ background: ok ? 'var(--ok)' : 'var(--warn)' }} />
+        <span className="mono" style={{ fontSize: 16, fontWeight: 700 }}>{value}</span>
       </div>
     </div>
   );

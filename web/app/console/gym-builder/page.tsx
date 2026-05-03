@@ -860,8 +860,8 @@ export default function GymBuilderPage() {
       )}
 
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface shrink-0">
-        <span className="text-sm font-semibold text-white">Gym Builder</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-solid)', flexShrink: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>Gym Builder</span>
         <div className="w-px h-4 bg-border" />
 
         {/* Editable project name */}

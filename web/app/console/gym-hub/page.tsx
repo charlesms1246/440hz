@@ -86,71 +86,61 @@ export default function GymHubPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       {/* Header */}
-      <div className="px-6 py-4 border-b border-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-semibold text-white">Gym Hub</h1>
-            <p className="text-[11px] text-muted">Browse and manage training environments</p>
-          </div>
-          <div className="flex bg-surface-2 p-0.5">
-            {(['owned', 'marketplace'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`text-[12px] font-medium px-4 py-1.5 transition-all capitalize ${tab === t ? 'bg-surface text-white shadow' : 'text-muted hover:text-gray-300'}`}
-              >
-                {t === 'owned' ? `Owned (${savedGyms.length})` : 'Marketplace'}
-              </button>
-            ))}
-          </div>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Gym <em>Hub</em></h1>
+          <p className="page-sub">Browse and manage training environments</p>
+        </div>
+        <div style={{ display: 'flex', background: 'var(--surface-hi)', padding: 3, borderRadius: 10, border: '1px solid var(--border)' }}>
+          {(['owned', 'marketplace'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{ fontSize: 12, fontWeight: 500, padding: '6px 16px', borderRadius: 8, background: tab === t ? 'var(--surface-solid)' : 'transparent', color: tab === t ? 'var(--text)' : 'var(--text-3)', border: 'none', cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit' }}
+            >
+              {t === 'owned' ? `Owned (${savedGyms.length})` : 'Marketplace'}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Search + ENS lookup (marketplace only) */}
       {tab === 'marketplace' && (
-        <div className="px-6 py-3 border-b border-border space-y-2">
-          {/* Text search */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16 }}>
           <input
             type="text"
             placeholder="Search gyms by name or description…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full text-[12px] px-3 py-1.5 bg-surface-2 border border-border text-white placeholder:text-muted/50 focus:outline-none focus:border-purple/40 rounded-lg"
+            className="ghost-input"
+            style={{ fontSize: 13 }}
           />
-          {/* ENS lookup */}
-          <div className="flex items-center gap-2">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="text"
               placeholder="ENS lookup: foo-gym.440hz.eth or just foo"
               value={ensQuery}
               onChange={e => { setEnsQuery(e.target.value); setEnsError(''); setEnsResult(null) }}
               onKeyDown={e => e.key === 'Enter' && !ensLoading && handleEnsLookup()}
-              className="flex-1 text-[12px] px-3 py-1.5 bg-surface-2 border border-border text-white placeholder:text-muted/50 focus:outline-none focus:border-purple/40 rounded-lg"
+              className="ghost-input"
+              style={{ flex: 1, fontSize: 12 }}
             />
-            <button
-              onClick={handleEnsLookup}
-              disabled={ensLoading || !ensQuery.trim()}
-              className="text-[11px] px-3 py-1.5 border border-border text-muted hover:text-white hover:border-purple/40 rounded-lg transition-all disabled:opacity-40"
-            >
+            <button onClick={handleEnsLookup} disabled={ensLoading || !ensQuery.trim()} className="btn ghost sm">
               {ensLoading ? '…' : 'Resolve'}
             </button>
           </div>
-          {ensResult && <p className="text-[11px] text-green">{ensResult}</p>}
-          {ensError && <p className="text-[11px] text-signal-red">{ensError}</p>}
+          {ensResult && <p style={{ fontSize: 11, color: 'var(--ok)' }}>{ensResult}</p>}
+          {ensError && <p style={{ fontSize: 11, color: 'var(--danger)' }}>{ensError}</p>}
         </div>
       )}
 
       {/* Category filters (marketplace only) */}
       {tab === 'marketplace' && (
-        <div className="flex items-center gap-2 px-6 py-3 border-b border-border overflow-x-auto">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {categories.map(c => (
-            <button
-              key={c}
-              onClick={() => setCategory(c)}
-              className={`text-[11px] whitespace-nowrap px-3 py-1.5 border transition-all ${category === c ? 'border-purple bg-purple/10 text-purple-400' : 'border-border text-muted hover:text-white hover:border-gray-500'}`}
-            >
+            <button key={c} onClick={() => setCategory(c)} style={{ padding: '5px 14px', borderRadius: 999, background: category === c ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${category === c ? 'var(--accent)' : 'var(--border)'}`, color: category === c ? 'var(--accent-2)' : 'var(--text-2)', fontSize: 12, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
               {c}
             </button>
           ))}
@@ -158,12 +148,12 @@ export default function GymHubPage() {
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div>
         {tab === 'owned' ? (
           savedGyms.length === 0 ? (
             <OwnedEmptyState />
           ) : (
-            <div className="grid grid-cols-3 gap-4">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
               {savedGyms.map(gym => (
                 <OwnedCard key={gym.rootHash} gym={gym} />
               ))}
@@ -172,19 +162,19 @@ export default function GymHubPage() {
         ) : (
           <>
             {marketErr && (
-              <div className="flex items-center gap-2 px-3 py-2 mb-4 border border-amber/30 bg-amber/10 text-amber text-[11px]">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 16, border: '1px solid oklch(0.80 0.14 75 / 0.3)', background: 'oklch(0.80 0.14 75 / 0.1)', color: 'var(--warn)', fontSize: 11, borderRadius: 8 }}>
                 <span>⚠ Showing cached listings — {marketErr}</span>
-                <button onClick={() => setMarketErr('')} className="ml-auto text-muted hover:text-white">✕</button>
+                <button onClick={() => setMarketErr('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}>✕</button>
               </div>
             )}
             {loadingMarket ? (
-              <div className="grid grid-cols-3 gap-4">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                 {[0, 1, 2].map(i => (
-                  <div key={i} className="bg-surface border border-border p-4 h-52 animate-pulse" />
+                  <div key={i} className="card" style={{ height: 208, opacity: 0.5 }} />
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-4">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                 {filtered.map(gym => (
                   <MarketCard
                     key={gym.rootHash}
@@ -215,18 +205,13 @@ export default function GymHubPage() {
 function OwnedEmptyState() {
   const router = useRouter()
   return (
-    <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
-      <div className="w-12 h-12 bg-surface-2 border border-border flex items-center justify-center text-2xl">
-        🏟️
-      </div>
-      <p className="text-[13px] text-white font-medium">No gyms saved yet</p>
-      <p className="text-[12px] text-muted max-w-xs">
+    <div className="card" style={{ textAlign: 'center', padding: 48, color: 'var(--text-3)' }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>🏟️</div>
+      <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>No gyms saved yet</p>
+      <p style={{ fontSize: 12, marginTop: 6, maxWidth: 280, margin: '6px auto 0' }}>
         Build a gym in the Gym Builder and hit Save or Publish to add it here.
       </p>
-      <button
-        onClick={() => router.push('/console/gym-builder')}
-        className="text-[12px] px-4 py-1.5 bg-purple hover:bg-purple/80 text-white transition-colors"
-      >
+      <button onClick={() => router.push('/console/gym-builder')} className="btn sm" style={{ marginTop: 16 }}>
         Open Gym Builder →
       </button>
     </div>
@@ -243,51 +228,24 @@ function OwnedCard({ gym }: { gym: GymEntry }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const savedDate = new Date(gym.savedAt).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
+  const savedDate = new Date(gym.savedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
   return (
-    <div className="bg-surface border border-border p-4 hover:border-gray-600 transition-colors group flex flex-col">
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-9 h-9 bg-purple/20 flex items-center justify-center text-lg shrink-0">
-          🏟️
-        </div>
-        <span className="text-[10px] px-2 py-0.5 border border-green/30 bg-green/10 text-green">
-          Saved
-        </span>
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = ''; (e.currentTarget as HTMLElement).style.transform = ''; }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid var(--accent)', display: 'grid', placeItems: 'center', fontSize: 18 }}>🏟️</div>
+        <span className="pill running">Saved</span>
       </div>
-
-      <div className="text-[13px] font-semibold text-white mb-0.5">{gym.name}</div>
-      <div className="text-[11px] text-muted mb-3">{savedDate}</div>
-
-      <div className="flex items-center gap-1 mb-1">
-        <span className="text-[10px] text-muted">Root hash</span>
-      </div>
-      <div
-        className="text-[10px] font-mono text-muted/80 truncate mb-4 cursor-pointer hover:text-white transition-colors"
-        title={gym.rootHash}
-        onClick={copyHash}
-      >
+      <div style={{ fontWeight: 600, fontSize: 14 }}>{gym.name}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{savedDate}</div>
+      <div className="mono" onClick={copyHash} title={gym.rootHash} style={{ fontSize: 10, color: 'var(--text-3)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 4 }}>
         {gym.rootHash.slice(0, 20)}…{gym.rootHash.slice(-6)}
       </div>
-
-      <div className="flex items-center gap-2 mt-auto">
-        <button
-          onClick={copyHash}
-          className="text-[11px] px-2.5 py-1.5 border border-border text-muted hover:text-white transition-colors flex-1"
-        >
-          {copied ? '✓ Copied' : 'Copy Hash'}
-        </button>
-        <button
-          onClick={() => {
-            sessionStorage.setItem('440hz-open-gym-hash', gym.rootHash)
-            router.push('/console/gym-builder')
-          }}
-          className="text-[11px] px-2.5 py-1.5 bg-purple/20 hover:bg-purple/30 text-purple-400 transition-colors flex-1"
-        >
-          Open →
-        </button>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button onClick={copyHash} className="btn ghost sm" style={{ flex: 1, justifyContent: 'center' }}>{copied ? '✓ Copied' : 'Copy Hash'}</button>
+        <button onClick={() => { sessionStorage.setItem('440hz-open-gym-hash', gym.rootHash); router.push('/console/gym-builder'); }} className="btn sm" style={{ flex: 1, justifyContent: 'center' }}>Open →</button>
       </div>
     </div>
   )
@@ -296,13 +254,13 @@ function OwnedCard({ gym }: { gym: GymEntry }) {
 // ── Marketplace tab ────────────────────────────────────────────
 
 function ComplexityBar({ value }: { value: number }) {
-  const color = value >= 90 ? 'bg-signal-red' : value >= 70 ? 'bg-amber' : 'bg-green'
+  const color = value >= 90 ? 'var(--danger)' : value >= 70 ? 'var(--warn)' : 'var(--ok)'
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-border overflow-hidden">
-        <div className={`h-full ${color}`} style={{ width: `${value}%` }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="progress-track" style={{ flex: 1 }}>
+        <div className="progress-fill" style={{ width: `${value}%`, background: color }} />
       </div>
-      <span className="text-[10px] font-mono text-muted w-6">{value}</span>
+      <span className="mono" style={{ fontSize: 10, color: 'var(--text-3)', width: 24 }}>{value}</span>
     </div>
   )
 }
@@ -344,66 +302,40 @@ function MarketCard({
   const owned = isOwned || dlStatus === 'done'
 
   function renderButton() {
-    if (owned) {
-      return (
-        <button disabled className="w-full text-[12px] py-1.5 font-medium mt-auto bg-green/10 text-green border border-green/30 cursor-default">
-          ✓ In Library
-        </button>
-      )
-    }
-    if (gym.cost !== 'Free') {
-      return (
-        <button disabled className="w-full text-[12px] py-1.5 font-medium mt-auto bg-purple/20 text-purple-400 border border-purple/30 cursor-default" title="On-chain licensing coming soon">
-          License · {gym.cost}
-        </button>
-      )
-    }
+    if (owned) return <button disabled className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', opacity: 1, color: 'var(--ok)', borderColor: 'oklch(0.78 0.14 150 / 0.3)' }}>✓ In Library</button>
+    if (gym.cost !== 'Free') return <button disabled className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', opacity: 0.6 }} title="On-chain licensing coming soon">License · {gym.cost}</button>
     return (
-      <button
-        onClick={handleDownload}
-        disabled={dlStatus === 'downloading'}
-        className={`w-full text-[12px] py-1.5 font-medium transition-all mt-auto ${
-          dlStatus === 'downloading' ? 'bg-green/20 text-green border border-green/30 cursor-wait' :
-          dlStatus === 'error'       ? 'bg-signal-red/20 text-signal-red border border-signal-red/30' :
-                                       'bg-green hover:bg-green/80 text-white'
-        }`}
-      >
-        {dlStatus === 'downloading' ? '⬇ Pulling from 0G Storage...' :
-         dlStatus === 'error'       ? '✕ Failed — retry' :
-                                      'Download Free'}
+      <button onClick={handleDownload} disabled={dlStatus === 'downloading'} className="btn sm" style={{ width: '100%', justifyContent: 'center', background: dlStatus === 'error' ? 'oklch(0.68 0.21 25 / 0.15)' : undefined, color: dlStatus === 'error' ? 'var(--danger)' : undefined }}>
+        {dlStatus === 'downloading' ? '⬇ Pulling from 0G Storage...' : dlStatus === 'error' ? '✕ Failed — retry' : 'Download Free'}
       </button>
     )
   }
 
+  const licenseClass = gym.license === 'Open' ? 'running' : gym.license === 'Enterprise' ? 'paused' : 'pending'
+
   return (
-    <div className="bg-surface border border-border p-4 hover:border-gray-600 transition-colors flex flex-col">
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-9 h-9 bg-surface-2 flex items-center justify-center text-lg">{icon}</div>
-        <span className={`text-[10px] px-2 py-0.5 border ${
-          gym.license === 'Open'       ? 'border-green/30 bg-green/10 text-green' :
-          gym.license === 'Enterprise' ? 'border-amber/30 bg-amber/10 text-amber' :
-                                         'border-purple/30 bg-purple/10 text-purple-400'
-        }`}>
-          {gym.license}
-        </span>
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, transition: 'transform 0.15s, border-color 0.15s' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.borderColor = ''; }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--surface-hi)', display: 'grid', placeItems: 'center', fontSize: 18 }}>{icon}</div>
+        <span className={`pill ${licenseClass}`}>{gym.license}</span>
       </div>
-      <div className="text-[13px] font-semibold text-white mb-0.5">{gym.name}</div>
-      <div className="text-[11px] text-muted mb-3">{gym.category}</div>
-      <div className="mb-2">
-        <div className="text-[10px] text-muted mb-1">Complexity</div>
+      <div style={{ fontWeight: 600, fontSize: 13 }}>{gym.name}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{gym.category}</div>
+      <div style={{ marginTop: 4 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 4 }}>Complexity</div>
         <ComplexityBar value={gym.complexity} />
       </div>
-      <div className="text-[10px] font-mono text-muted truncate mb-3">
+      <div className="mono" style={{ fontSize: 10, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {gym.rootHash.slice(0, 16)}…{gym.rootHash.slice(-6)}
       </div>
-      <div className="flex items-center justify-between text-[11px] text-muted mb-3">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-3)' }}>
         <span>⭐ {gym.rating ?? '—'}</span>
         <span>{gym.downloads?.toLocaleString() ?? '0'} pulls</span>
       </div>
-      {dlStatus === 'error' && dlError && (
-        <p className="text-[10px] text-signal-red mb-2 truncate" title={dlError}>{dlError}</p>
-      )}
-      {renderButton()}
+      {dlStatus === 'error' && dlError && <p style={{ fontSize: 10, color: 'var(--danger)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dlError}>{dlError}</p>}
+      <div style={{ marginTop: 'auto', paddingTop: 4 }}>{renderButton()}</div>
     </div>
   )
 }

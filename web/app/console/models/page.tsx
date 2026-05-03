@@ -63,6 +63,53 @@ function toRow(t: ApiTask): ModelRow {
   };
 }
 
+// ── Mock data ─────────────────────────────────────────────────────────────────
+
+const MOCK_TASKS: ApiTask[] = [
+  {
+    id: "mock-0000000001",
+    arena_name: "CartPole-v1 Demo",
+    submitter_address: "0x0000000000000000000000000000000000000000",
+    state: "completed",
+    created_at: Math.floor(Date.now() / 1000) - 86400 * 3,
+    elapsed_seconds: 7320,
+    receipt: {
+      base_model: "meta-llama/Llama-3.2-1B",
+      gym_image: "440hz/cartpole-gym:latest",
+      adapter_ref: "0xabcdef1234567890abcdef1234567890abcdef12",
+      final_total_reward: 487.5,
+      final_episode_steps: 12400,
+    },
+    error: null,
+  },
+  {
+    id: "mock-0000000002",
+    arena_name: "LunarLander-v2 Demo",
+    submitter_address: "0x0000000000000000000000000000000000000000",
+    state: "running",
+    created_at: Math.floor(Date.now() / 1000) - 3600,
+    elapsed_seconds: 3600,
+    receipt: {
+      base_model: "Qwen/Qwen2.5-0.5B",
+      gym_image: "440hz/lunarlander-gym:latest",
+      adapter_ref: null,
+      final_total_reward: null,
+      final_episode_steps: null,
+    },
+    error: null,
+  },
+  {
+    id: "mock-0000000003",
+    arena_name: "MountainCar-v0 Demo",
+    submitter_address: "0x0000000000000000000000000000000000000000",
+    state: "failed",
+    created_at: Math.floor(Date.now() / 1000) - 86400,
+    elapsed_seconds: 1800,
+    receipt: null,
+    error: "OOM: GPU memory exceeded",
+  },
+];
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ModelsPage() {
@@ -95,6 +142,8 @@ export default function ModelsPage() {
       });
     } catch {
       setOffline(true);
+      setTasks(MOCK_TASKS);
+      setSelectedId((prev) => prev ?? MOCK_TASKS[0].id);
     } finally {
       setLoading(false);
     }
@@ -184,34 +233,17 @@ export default function ModelsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <span className="text-[12px] text-muted">Loading models…</span>
-      </div>
-    );
-  }
-
-  if (offline) {
-    return (
-      <div className="flex h-full items-center justify-center flex-col gap-3">
-        <div className="text-[12px] text-muted">Provider API offline</div>
-        <div className="text-[11px] text-muted/60 font-mono">{PROVIDER_API}</div>
-        <button
-          onClick={fetchTasks}
-          className="text-[11px] px-3 py-1.5 border border-border text-muted hover:text-white hover:border-gray-500 transition-colors mt-1"
-        >
-          Retry
-        </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Loading models…</span>
       </div>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center flex-col gap-2">
-        <div className="text-[12px] text-muted">No training runs yet</div>
-        <div className="text-[11px] text-muted/60">
-          Submit an arena job to start training a model.
-        </div>
+      <div className="card" style={{ textAlign: 'center', padding: 48, color: 'var(--text-3)' }}>
+        <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>No training runs yet</p>
+        <p style={{ fontSize: 12, marginTop: 6 }}>Submit an arena job to start training a model.</p>
       </div>
     );
   }
@@ -219,43 +251,34 @@ export default function ModelsPage() {
   // ── Main layout ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Model list */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <div>
-            <h1 className="text-base font-semibold text-white">Models</h1>
-            <p className="text-[11px] text-muted">
-              Trained assets and LoRA weight inventory
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="text-[11px] px-3 py-1.5 border border-border text-muted hover:text-white hover:border-gray-500 transition-colors">
-              Export All
-            </button>
-            <button className="text-[11px] px-3 py-1.5 bg-purple hover:bg-purple/80 text-white font-medium transition-colors">
-              List on Marketplace
-            </button>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minHeight: '100%' }}>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Trained <em>Models</em></h1>
+          <p className="page-sub">LoRA adapters and weight inventory from training runs</p>
         </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn ghost sm">Export All</button>
+          <button className="btn sm" disabled style={{ opacity: 0.4 }}>List on Marketplace</button>
+        </div>
+      </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-space border-b border-border">
-              <tr>
-                {[
-                  "Model",
-                  "Base",
-                  "LoRA Status",
-                  "0G Storage CID",
-                  "Episodes",
-                  "Duration",
-                  "Status",
-                ].map((h, i) => (
-                  <th
-                    key={h}
-                    className={`text-[10px] text-muted font-medium px-4 py-2.5 uppercase tracking-wider ${i >= 4 ? "text-right" : "text-left"}`}
-                  >
+      {offline && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 16px', background: 'oklch(0.80 0.14 75 / 0.1)', border: '1px solid oklch(0.80 0.14 75 / 0.3)', borderRadius: 10, fontSize: 11, color: 'var(--warn)' }}>
+          <span>⚠ Provider API unavailable — showing demo data <span style={{ opacity: 0.6, fontFamily: 'var(--font-mono)' }}>({PROVIDER_API})</span></span>
+          <button onClick={fetchTasks} className="btn ghost sm" style={{ color: 'var(--warn)', borderColor: 'oklch(0.80 0.14 75 / 0.4)' }}>Retry</button>
+        </div>
+      )}
+
+      {/* Table + Detail panel */}
+      <div style={{ display: 'flex', gap: 18, alignItems: 'stretch', flex: 1 }}>
+        {/* Model list */}
+        <div className="card" style={{ flex: 1, overflow: 'hidden', padding: 0 }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                {["Model", "Base", "LoRA Status", "0G Storage CID", "Episodes", "Duration", "Status"].map((h, i) => (
+                  <th key={h} style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 500, padding: '10px 14px', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: i >= 4 ? 'right' : 'left' }}>
                     {h}
                   </th>
                 ))}
@@ -266,277 +289,147 @@ export default function ModelsPage() {
                 <tr
                   key={m.id}
                   onClick={() => setSelectedId(m.id)}
-                  className={`border-b border-border cursor-pointer transition-colors ${
-                    selectedId === m.id
-                      ? "bg-purple/10 border-l-2 border-l-purple"
-                      : "hover:bg-surface-2"
-                  }`}
+                  style={{
+                    borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer',
+                    background: selectedId === m.id ? 'var(--accent-soft)' : 'transparent',
+                    transition: 'background 0.12s',
+                    borderLeft: selectedId === m.id ? '2px solid var(--accent)' : '2px solid transparent',
+                  }}
+                  onMouseEnter={e => { if (selectedId !== m.id) (e.currentTarget as HTMLElement).style.background = 'var(--surface-hi)'; }}
+                  onMouseLeave={e => { if (selectedId !== m.id) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                 >
-                  <td className="px-4 py-3">
-                    <div className="text-[13px] font-semibold text-white">
-                      {m.name}
-                    </div>
-                    <div className="text-[10px] font-mono text-muted">
-                      {m.id.slice(0, 12)}… · {m.createdAt}
-                    </div>
+                  <td style={{ padding: '10px 14px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{m.name}</div>
+                    <div className="mono" style={{ fontSize: 10, color: 'var(--text-3)' }}>{m.id.slice(0, 12)}… · {m.createdAt}</div>
                   </td>
-                  <td className="px-4 py-3 text-[12px] text-gray-400">
-                    {m.base}
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-2)' }}>{m.base}</td>
+                  <td style={{ padding: '10px 14px' }}><StateTag state={m.state} /></td>
+                  <td className="mono" style={{ padding: '10px 14px', fontSize: 11, color: 'var(--text-3)' }}>
+                    {m.adapterRef ? (m.isOnChain ? `${m.adapterRef.slice(0, 10)}…${m.adapterRef.slice(-6)}` : "local") : m.state === "running" ? "uploading…" : "–"}
                   </td>
-                  <td className="px-4 py-3">
-                    <StateTag state={m.state} />
-                  </td>
-                  <td className="px-4 py-3 text-[11px] font-mono text-muted">
-                    {m.adapterRef
-                      ? m.isOnChain
-                        ? `${m.adapterRef.slice(0, 10)}…${m.adapterRef.slice(-6)}`
-                        : "local"
-                      : m.state === "running"
-                      ? "uploading…"
-                      : "–"}
-                  </td>
-                  <td className="px-4 py-3 text-right text-[12px] font-mono text-white">
-                    {m.episodes != null ? m.episodes.toLocaleString() : "–"}
-                  </td>
-                  <td className="px-4 py-3 text-right text-[12px] font-mono text-white">
-                    {m.elapsedHours != null
-                      ? `${m.elapsedHours.toFixed(1)}h`
-                      : "–"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <StateTag state={m.state} compact />
-                  </td>
+                  <td className="mono" style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12 }}>{m.episodes != null ? m.episodes.toLocaleString() : "–"}</td>
+                  <td className="mono" style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12 }}>{m.elapsedHours != null ? `${m.elapsedHours.toFixed(1)}h` : "–"}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right' }}><StateTag state={m.state} compact /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Detail panel */}
+        {selected && (
+          <div className="card" style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 0, padding: 0, overflow: 'hidden', alignSelf: 'stretch' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{selected.name}</div>
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{selected.id.slice(0, 20)}…</div>
+            </div>
+
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 18, flex: 1, overflowY: 'auto' }}>
+              {/* Details */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <InfoRow label="Base Model" value={selected.base} />
+                <InfoRow label="Reward" value={selected.reward != null ? selected.reward.toFixed(2) : "–"} highlight={selected.reward != null ? "green" : undefined} />
+                <InfoRow label="Episodes" value={selected.episodes != null ? selected.episodes.toLocaleString() : "–"} />
+                <InfoRow label="Duration" value={selected.elapsedHours != null ? `${selected.elapsedHours.toFixed(2)}h` : "–"} />
+                <InfoRow label="Submitted" value={selected.createdAt} />
+              </div>
+
+              {/* Storage CID */}
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>0G Storage CID</div>
+                {selected.adapterRef ? (
+                  <div style={{ background: 'var(--surface-hi)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {selected.isOnChain ? selected.adapterRef : "local — not on 0G"}
+                    </span>
+                    {selected.isOnChain && (
+                      <button onClick={() => handleCopy(selected.adapterRef!)} className="btn ghost sm" style={{ flexShrink: 0, padding: '2px 8px', fontSize: 10, color: 'var(--accent-2)' }}>
+                        {copied ? "Copied!" : "Copy"}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ background: 'var(--surface-hi)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{selected.state === "running" ? "Training in progress…" : "Not available"}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Training lineage */}
+              <div>
+                <button onClick={() => setLineageOpen((o) => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  <span>Training Lineage</span>
+                  <span>{lineageOpen ? "▲" : "▼"}</span>
+                </button>
+                {lineageOpen && (
+                  <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: '2px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {[
+                      `Base: ${selected.base}`,
+                      selected.gymImage ? `Gym: ${selected.gymImage.startsWith("0x") ? selected.gymImage.slice(0, 12) + "…" : selected.gymImage}` : "Gym: –",
+                      "RLAIF training (GRPO)",
+                      selected.adapterRef ? `LoRA adapter → ${selected.isOnChain ? "0G Storage" : "local disk"}` : "LoRA adapter: in progress",
+                    ].map((step, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+                        <span style={{ color: 'var(--text-2)' }}>{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Status messages */}
+              {exportError && <div style={{ fontSize: 11, color: 'var(--danger)', background: 'oklch(0.68 0.21 25 / 0.1)', border: '1px solid oklch(0.68 0.21 25 / 0.2)', borderRadius: 8, padding: '8px 10px' }}>{exportError}</div>}
+              {weightsEnsName && <div className="mono" style={{ fontSize: 11, color: 'var(--accent-2)', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 10px' }}>⬡ {weightsEnsName}</div>}
+              {(mergeRef || selected.mergedRef) && (
+                <div className="mono" style={{ fontSize: 11, color: 'var(--ok)', background: 'oklch(0.78 0.14 150 / 0.1)', border: '1px solid oklch(0.78 0.14 150 / 0.2)', borderRadius: 8, padding: '8px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mergeRef ?? selected.mergedRef ?? ""}>
+                  ✓ Merged: {(mergeRef ?? selected.mergedRef ?? "").slice(0, 22)}…
+                </div>
+              )}
+              {mergeError && <div style={{ fontSize: 11, color: 'var(--danger)', background: 'oklch(0.68 0.21 25 / 0.1)', border: '1px solid oklch(0.68 0.21 25 / 0.2)', borderRadius: 8, padding: '8px 10px' }}>{mergeError}</div>}
+
+              {/* Actions */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button onClick={handleExport} disabled={!selected.isOnChain || exporting} className="btn sm" style={{ width: '100%', justifyContent: 'center' }}>
+                  {exporting ? "Downloading…" : selected.isOnChain ? "Export LoRA Weights" : "Export LoRA Weights (local only)"}
+                </button>
+                <button onClick={handleMerge} disabled={!selected.isOnChain || merging} className="btn ghost sm" style={{ width: '100%', justifyContent: 'center' }}>
+                  {merging ? "Merging weights…" : mergeRef || selected.mergedRef ? "✓ Merged — Merge Again" : "Merge Weights"}
+                </button>
+                <button disabled className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', opacity: 0.4, color: 'var(--ok)', borderColor: 'oklch(0.78 0.14 150 / 0.3)' }}>
+                  List on Marketplace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Detail panel */}
-      {selected && (
-        <div className="w-72 border-l border-border bg-surface shrink-0 flex flex-col overflow-y-auto">
-          <div className="px-4 py-3 border-b border-border">
-            <div className="text-sm font-semibold text-white">
-              {selected.name}
-            </div>
-            <div className="text-[11px] text-muted font-mono mt-0.5">
-              {selected.id.slice(0, 20)}…
-            </div>
-          </div>
-
-          <div className="p-4 space-y-5">
-            {/* Details */}
-            <div className="space-y-2">
-              <InfoRow label="Base Model" value={selected.base} />
-              <InfoRow
-                label="Reward"
-                value={
-                  selected.reward != null
-                    ? selected.reward.toFixed(2)
-                    : "–"
-                }
-                highlight={selected.reward != null ? "green" : undefined}
-              />
-              <InfoRow
-                label="Episodes"
-                value={
-                  selected.episodes != null
-                    ? selected.episodes.toLocaleString()
-                    : "–"
-                }
-              />
-              <InfoRow
-                label="Duration"
-                value={
-                  selected.elapsedHours != null
-                    ? `${selected.elapsedHours.toFixed(2)}h`
-                    : "–"
-                }
-              />
-              <InfoRow label="Submitted" value={selected.createdAt} />
-            </div>
-
-            {/* Storage CID */}
-            <div>
-              <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">
-                0G Storage CID
-              </div>
-              {selected.adapterRef ? (
-                <div className="bg-surface-2 border border-border px-3 py-2 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono text-gray-300 truncate">
-                    {selected.isOnChain
-                      ? selected.adapterRef
-                      : "local — not on 0G"}
-                  </span>
-                  {selected.isOnChain && (
-                    <button
-                      onClick={() => handleCopy(selected.adapterRef!)}
-                      className="shrink-0 text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
-                    >
-                      {copied ? "Copied!" : "Copy"}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="bg-surface-2 border border-border px-3 py-2">
-                  <span className="text-[11px] text-muted/60">
-                    {selected.state === "running"
-                      ? "Training in progress…"
-                      : "Not available"}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Training lineage */}
-            <div>
-              <button
-                onClick={() => setLineageOpen((o) => !o)}
-                className="w-full flex items-center justify-between text-[11px] text-muted hover:text-white transition-colors"
-              >
-                <span className="uppercase tracking-wider">
-                  Training Lineage
-                </span>
-                <span>{lineageOpen ? "▲" : "▼"}</span>
-              </button>
-              {lineageOpen && (
-                <div className="mt-2 space-y-1 border-l-2 border-border pl-3">
-                  {[
-                    `Base: ${selected.base}`,
-                    selected.gymImage
-                      ? `Gym: ${selected.gymImage.startsWith("0x") ? selected.gymImage.slice(0, 12) + "…" : selected.gymImage}`
-                      : "Gym: –",
-                    "RLAIF training (GRPO)",
-                    selected.adapterRef
-                      ? `LoRA adapter → ${selected.isOnChain ? "0G Storage" : "local disk"}`
-                      : "LoRA adapter: in progress",
-                  ].map((step, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[11px]">
-                      <span className="w-1.5 h-1.5 bg-purple shrink-0" />
-                      <span className="text-gray-400">{step}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Export error */}
-            {exportError && (
-              <div className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 px-3 py-2">
-                {exportError}
-              </div>
-            )}
-
-            {/* Weights ENS name */}
-            {weightsEnsName && (
-              <div className="text-[11px] text-purple-300 bg-purple/10 border border-purple/20 px-3 py-2 font-mono">
-                ⬡ {weightsEnsName}
-              </div>
-            )}
-
-            {/* Merged model ref */}
-            {(mergeRef || selected.mergedRef) && (
-              <div className="text-[11px] text-green bg-green/10 border border-green/20 px-3 py-2 font-mono truncate" title={mergeRef ?? selected.mergedRef ?? ""}>
-                ✓ Merged: {(mergeRef ?? selected.mergedRef ?? "").slice(0, 22)}…
-              </div>
-            )}
-
-            {/* Merge error */}
-            {mergeError && (
-              <div className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 px-3 py-2">
-                {mergeError}
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="space-y-2 pt-2">
-              <button
-                onClick={handleExport}
-                disabled={!selected.isOnChain || exporting}
-                className="w-full text-[12px] py-1.5 bg-purple hover:bg-purple/80 text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {exporting
-                  ? "Downloading…"
-                  : selected.isOnChain
-                  ? "Export LoRA Weights"
-                  : "Export LoRA Weights (local only)"}
-              </button>
-              <button
-                onClick={handleMerge}
-                disabled={!selected.isOnChain || merging}
-                className="w-full text-[12px] py-1.5 border border-purple/40 text-purple-300 hover:bg-purple/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {merging ? "Merging weights…" : mergeRef || selected.mergedRef ? "✓ Merged — Merge Again" : "Merge Weights"}
-              </button>
-              <button
-                disabled
-                className="w-full text-[12px] py-1.5 border border-green/30 text-green opacity-40 cursor-not-allowed"
-              >
-                List on Marketplace
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StateTag({
-  state,
-  compact,
-}: {
-  state: ApiTask["state"];
-  compact?: boolean;
-}) {
-  const cfg: Record<
-    ApiTask["state"],
-    { label: string; cls: string }
-  > = {
-    running:   { label: "training",  cls: "bg-amber/10 text-amber" },
-    pending:   { label: "pending",   cls: "bg-border text-muted" },
-    completed: { label: "stable",    cls: "bg-green/10 text-green" },
-    failed:    { label: "failed",    cls: "bg-red-400/10 text-red-400" },
-    cancelled: { label: "cancelled", cls: "bg-border text-muted" },
+function StateTag({ state, compact }: { state: ApiTask["state"]; compact?: boolean }) {
+  const pillClass: Record<ApiTask["state"], string> = {
+    running:   'running',
+    pending:   'pending',
+    completed: 'running',
+    failed:    'failed',
+    cancelled: 'paused',
   };
-  const { label, cls } = cfg[state];
-
-  if (compact) {
-    return (
-      <span className={`text-[10px] px-2 py-0.5 ${cls}`}>{label}</span>
-    );
-  }
-  return (
-    <span className={`text-[10px] px-1.5 py-0.5 ${cls}`}>{label}</span>
-  );
+  const labels: Record<ApiTask["state"], string> = {
+    running: 'training', pending: 'pending', completed: 'stable', failed: 'failed', cancelled: 'cancelled',
+  };
+  return <span className={`pill ${pillClass[state]}`} style={{ fontSize: compact ? 10 : 11 }}>{labels[state]}</span>;
 }
 
-function InfoRow({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: "green" | "amber";
-}) {
+function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: "green" | "amber" }) {
   return (
-    <div className="flex justify-between items-center text-[12px]">
-      <span className="text-muted">{label}</span>
-      <span
-        className={
-          highlight === "green"
-            ? "text-green"
-            : highlight === "amber"
-            ? "text-amber"
-            : "text-white"
-        }
-      >
-        {value}
-      </span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+      <span style={{ color: 'var(--text-3)' }}>{label}</span>
+      <span style={{ color: highlight === 'green' ? 'var(--ok)' : highlight === 'amber' ? 'var(--warn)' : 'var(--text)' }}>{value}</span>
     </div>
   );
 }
