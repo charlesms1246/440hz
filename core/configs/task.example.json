@@ -15,7 +15,7 @@
   },
   "supervisor": {
     "type": "openai_compatible",
-    "base_url": "http://host.docker.internal:11434/v1",
+    "base_url": "http://localhost:11434/v1",
     "model": "qwen2.5:7b",
     "api_key": null,
     "rubric": "You are evaluating an AI agent's SQL fix. The agent was given a buggy query and a database error message; it submitted a corrected query. Score the correction from 0.0 to 1.0 based on: (1) does it address the specific error mentioned, (2) is it valid SQL syntax, (3) does it preserve the apparent intent of the original query. Respond with ONLY a JSON object: {\"score\": <float 0..1>, \"reason\": \"<one short sentence>\"}.",
