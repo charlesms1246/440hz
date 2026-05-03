@@ -256,23 +256,19 @@ def upload_adapter(
         with tarfile.open(archive, "w:gz") as tf:
             tf.add(src, arcname=src.name)
 
-        # Encrypt to the user's pubkey before upload, if provided. We stub the
-        # encryption call out — production should use a vetted ECIES library
-        # (e.g. eciespy) keyed off `encryption_pubkey` (a hex-encoded secp256k1
-        # public key, matching the user's wallet).
         upload_path = archive
         if encryption_pubkey:
             upload_path = _encrypt_for_pubkey(archive, encryption_pubkey)
 
-        # Upload via the 0G CLI. The CLI prints the resulting root hash.
-        res = _run([
-            "0g-compute-cli", "fine-tuning", "upload",
-            "--data-path", str(upload_path),
-        ])
-        # Parse "Root hash: 0x..." from stdout.
-        for line in res.splitlines():
-            if "Root hash:" in line:
-                return line.split("Root hash:", 1)[1].strip()
+        # Upload via the zg_broker Node helper (uses @0gfoundation/0g-ts-sdk).
+        broker_script = Path(__file__).parent / "zg_broker.mjs"
+        res = _run(["node", str(broker_script), "upload-adapter", str(upload_path)])
+        try:
+            data = json.loads(res.strip())
+            if "rootHash" in data:
+                return data["rootHash"]
+        except Exception:
+            pass
         raise StorageError(f"could not parse root hash from upload output: {res!r}")
 
     raise StorageError(f"unknown destination: {destination}")

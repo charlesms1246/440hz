@@ -39,7 +39,7 @@
     "save_every": 25
   },
   "output": {
-    "destination": "local",
+    "destination": "0g_storage",
     "encryption_pubkey": null,
     "local_path": "/var/440hz/output"
   },
