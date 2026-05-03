@@ -28,6 +28,7 @@ AI labs are hitting the "data wall"—the limit of high-quality, human-generated
 - **No-Code Gym UI**: A drag-and-drop builder for experts to create complex Gymnasium training environments without writing Python.
 - **Federated "Edge" Compute**: Using **Parameter-Efficient Fine-Tuning (QLoRA)**, base models are pushed down to the data. Models train locally on edge hardware or within **0G TEEs**, bypassing cloud egress fees entirely.
 - **AI-Overseer Verification (RLAIF)**: Small, fast models (like Mistral Small or MiMo-v2-flash) act as the reward function, automating the RL loop and removing the human bottleneck in training.
+- **ZK Verification (ZKSettlement)**: Guarantees computational integrity via cryptographic proofs. Providers submit ZK proofs to the 0G Chain to verify that the training was executed correctly, enabling trustless settlement without relying solely on TEEs.
 
 ---
 
@@ -199,6 +200,24 @@ cd core
 ./scripts/build-images.sh
 ./scripts/federated-demo.sh
 ```
+
+---
+
+## Deep-Tech Integration (ENS & 0G)
+
+440hz is built on the cutting edge of decentralized infrastructure. The table below provides direct links to the core integration patterns used for Identity and Compute Orchestration.
+
+| Integration | Component | Technical Implementation |
+| :--- | :--- | :--- |
+| **ENS Identity** | Subname Registration | [registerSubname (web/lib/utils/ensSubname.ts)](file:///d:/440hz/web/lib/utils/ensSubname.ts#L78-L98) |
+| **ENS Identity** | Metadata & Provenance | [setEnsTextRecord (web/lib/utils/ensSubname.ts)](file:///d:/440hz/web/lib/utils/ensSubname.ts#L101-L113) |
+| **0G Storage** | Data Upload (User Wallet) | [uploadBytesAsUser (web/lib/utils/upload0g.ts)](file:///d:/440hz/web/lib/utils/upload0g.ts#L35-L73) |
+| **0G Storage** | Gym Bundle Persistence | [uploadGymBundle (web/lib/utils/upload0g.ts)](file:///d:/440hz/web/lib/utils/upload0g.ts#L120-L123) |
+| **0G Storage** | Verifiable Download | [downloadGymBundle (web/lib/utils/upload0g.ts)](file:///d:/440hz/web/lib/utils/upload0g.ts#L179-L192) |
+| **0G Serving** | Verifiable Inference | [fetchInferenceMeta (core/executor/zg_broker.mjs)](file:///d:/440hz/core/executor/zg_broker.mjs#L44-L58) |
+| **0G Serving** | Service Verification | [verifyProvider (core/executor/zg_broker.mjs)](file:///d:/440hz/core/executor/zg_broker.mjs#L68-L79) |
+| **0G Chain** | Training Escrow (Job Deposit) | [contractDepositJob (web/lib/contracts/index.ts)](file:///d:/440hz/web/lib/contracts/index.ts#L145-L157) |
+| **0G Chain** | Marketplace (Gym Listing) | [contractListGym (web/lib/contracts/index.ts)](file:///d:/440hz/web/lib/contracts/index.ts#L93-L105) |
 
 ---
 
