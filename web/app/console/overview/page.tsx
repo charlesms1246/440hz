@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useBalance } from "wagmi";
 import { formatEther } from "ethers";
 import { useProfileStore } from "@/lib/profileStore";
+import { useGymStore } from "@/lib/gymStore";
 import { contractPendingRoyalties, contractClaimRoyalties } from "@/lib/contracts";
 
 const sparkData = [
@@ -64,8 +65,53 @@ const computeStats = {
   peers: 340,
 };
 
+type PingResult = { latency: number | null; ok: boolean }
+
+async function pingEndpoint(url: string): Promise<PingResult> {
+  const t0 = Date.now()
+  try {
+    const res = await Promise.race([
+      fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' }),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
+    ])
+    void res
+    return { latency: Date.now() - t0, ok: true }
+  } catch {
+    return { latency: null, ok: false }
+  }
+}
+
 export default function OverviewPage() {
   const { persona } = useProfileStore();
+  const { address } = useAccount();
+  const { savedGyms } = useGymStore();
+  const { data: balance } = useBalance({ address, chainId: 16602 });
+
+  const totalGyms = savedGyms.length;
+  const publishedGyms = savedGyms.filter(g => g.ensLabel).length;
+
+  const [daStatus, setDaStatus] = useState<PingResult>({ latency: null, ok: true });
+  const [storageStatus, setStorageStatus] = useState<PingResult>({ latency: null, ok: true });
+  const [lastPing, setLastPing] = useState<string>('—');
+
+  useEffect(() => {
+    async function ping() {
+      const [da, storage] = await Promise.all([
+        pingEndpoint('https://evmrpc-testnet.0g.ai'),
+        pingEndpoint('https://indexer-storage-testnet-turbo.0g.ai'),
+      ]);
+      setDaStatus(da);
+      setStorageStatus(storage);
+      setLastPing(new Date().toLocaleTimeString());
+    }
+    ping();
+    const id = setInterval(ping, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const balanceDisplay = balance
+    ? parseFloat(formatEther(balance.value)).toLocaleString(undefined, { maximumFractionDigits: 2 })
+    : '—';
 
   return (
     <div className="p-6 space-y-6">
@@ -87,73 +133,92 @@ export default function OverviewPage() {
       {/* Universal widgets */}
       <div className="grid grid-cols-3 gap-4">
         {/* Network Status */}
-        <div className="bg-surface border border-border p-4 space-y-3">
+        <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted uppercase tracking-wider">
               Network Status
             </span>
-            <span className="flex items-center gap-1 text-[11px] text-green bg-green/10 px-2 py-0.5">
-              <span className="w-1.5 h-1.5 bg-green animate-pulse" />
-              In-Sync
+            <span className={`flex items-center gap-1 text-[11px] px-2 py-0.5 ${
+              daStatus.ok && storageStatus.ok
+                ? 'text-green bg-green/10'
+                : 'text-amber bg-amber/10'
+            }`}>
+              <span className={`w-1.5 h-1.5 animate-pulse ${daStatus.ok && storageStatus.ok ? 'bg-green' : 'bg-amber'}`} />
+              {daStatus.ok && storageStatus.ok ? 'Live' : 'Degraded'}
             </span>
           </div>
           <div className="space-y-2">
-            <ShardRow label="0G DA Layer" latency="12ms" ok />
-            <ShardRow label="0G Storage" latency="28ms" ok />
-            <ShardRow label="0G Compute" latency="67ms" ok={false} />
+            <ShardRow
+              label="0G RPC"
+              latency={daStatus.latency != null ? `${daStatus.latency}ms` : '—'}
+              ok={daStatus.ok}
+            />
+            <ShardRow
+              label="0G Storage"
+              latency={storageStatus.latency != null ? `${storageStatus.latency}ms` : '—'}
+              ok={storageStatus.ok}
+            />
+            <ShardRow label="0G Compute" latency="—" ok={false} />
           </div>
-          <div className="text-[11px] text-muted">Last ping: 2s ago</div>
+          <div className="text-[11px] text-muted">Last ping: {lastPing}</div>
         </div>
 
         {/* Middle card — persona-specific */}
         {persona === "tuner" && (
-          <div className="bg-surface border border-border p-4 space-y-3">
+          <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
             <span className="text-xs text-muted uppercase tracking-wider">
-              Active Arenas
+              Gym Library
             </span>
             <div className="flex items-end gap-4">
               <div>
-                <div className="text-3xl font-bold text-white">4</div>
-                <div className="text-[11px] text-muted">Running local</div>
+                <div className="text-3xl font-bold text-white">{totalGyms}</div>
+                <div className="text-[11px] text-muted">Owned gyms</div>
               </div>
               <div className="w-px h-10 bg-border" />
               <div>
-                <div className="text-3xl font-bold text-purple-400">12</div>
-                <div className="text-[11px] text-muted">Global swarm</div>
+                <div className="text-3xl font-bold text-purple-400">{publishedGyms}</div>
+                <div className="text-[11px] text-muted">Published</div>
               </div>
             </div>
             <div className="space-y-1.5">
-              <MiniBar label="Training" value={75} color="bg-purple" />
-              <MiniBar label="Aggregating" value={42} color="bg-amber" />
-              <MiniBar label="Deploying" value={18} color="bg-green" />
+              <MiniBar label="Saved" value={Math.min(totalGyms * 10, 100)} color="bg-purple" />
+              <MiniBar label="Published" value={totalGyms > 0 ? Math.round((publishedGyms / totalGyms) * 100) : 0} color="bg-green" />
             </div>
           </div>
         )}
         {persona === "builder" && (
-          <div className="bg-surface border border-border p-4 space-y-3">
+          <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
             <span className="text-xs text-muted uppercase tracking-wider">
               Gym Marketplace
             </span>
             <div className="flex items-end gap-4">
               <div>
-                <div className="text-3xl font-bold text-white">3</div>
+                <div className="text-3xl font-bold text-white">{publishedGyms}</div>
                 <div className="text-[11px] text-muted">Published gyms</div>
               </div>
               <div className="w-px h-10 bg-border" />
               <div>
-                <div className="text-3xl font-bold text-purple-400">15.4k</div>
-                <div className="text-[11px] text-muted">Total downloads</div>
+                <div className="text-3xl font-bold text-purple-400">{totalGyms}</div>
+                <div className="text-[11px] text-muted">Total saved</div>
               </div>
             </div>
             <div className="space-y-1.5">
-              <MiniBar label="PythonCoding" value={82} color="bg-purple" />
-              <MiniBar label="MarketSim" value={54} color="bg-amber" />
-              <MiniBar label="MathEnv" value={35} color="bg-green" />
+              {savedGyms.slice(0, 3).map(g => (
+                <MiniBar
+                  key={g.rootHash}
+                  label={g.name.slice(0, 14)}
+                  value={g.ensLabel ? 80 : 30}
+                  color={g.ensLabel ? 'bg-purple' : 'bg-border'}
+                />
+              ))}
+              {savedGyms.length === 0 && (
+                <p className="text-[11px] text-muted">No gyms saved yet.</p>
+              )}
             </div>
           </div>
         )}
         {persona === "provider" && (
-          <div className="bg-surface border border-border p-4 space-y-3">
+          <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
             <span className="text-xs text-muted uppercase tracking-wider">
               Node Health
             </span>
@@ -190,16 +255,16 @@ export default function OverviewPage() {
         )}
 
         {/* Wallet */}
-        <div className="bg-surface border border-border p-4 space-y-3">
+        <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted uppercase tracking-wider">
               Wallet
             </span>
-            <span className="text-[11px] text-green">+12.4% 24h</span>
+            <span className="text-[11px] text-muted">0G Galileo</span>
           </div>
           <div>
             <div className="text-3xl font-bold text-white font-mono">
-              2,847.3
+              {balanceDisplay}
             </div>
             <div className="text-[11px] text-muted">0G tokens</div>
           </div>
@@ -216,7 +281,7 @@ export default function OverviewPage() {
             })}
           </div>
           <div className="flex justify-between text-[10px] text-muted">
-            <span>24h ago</span>
+            <span>decorative</span>
             <span>Now</span>
           </div>
         </div>
@@ -233,7 +298,7 @@ export default function OverviewPage() {
 // ── Tuner: top arenas ──────────────────────────────────────────
 function TunerTable() {
   return (
-    <div className="bg-surface border border-border overflow-hidden">
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-white">
           Top Performing Arenas
@@ -337,7 +402,7 @@ function BuilderTable() {
     : '—'
 
   return (
-    <div className="bg-surface border border-border overflow-hidden">
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-sm font-medium text-white">
           Gym Royalty Dashboard
@@ -414,7 +479,7 @@ function BuilderTable() {
 function ProviderTable() {
   return (
     <div className="grid grid-cols-2 gap-4">
-      <div className="bg-surface border border-border p-5 space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-5 space-y-4">
         <span className="text-sm font-medium text-white">Yield & Earnings</span>
         <div className="grid grid-cols-2 gap-3">
           <StatCard label="24h Yield" value="184.2 0G" color="text-green" />
@@ -423,7 +488,7 @@ function ProviderTable() {
           <StatCard label="Efficiency" value="94.2%" color="text-white" />
         </div>
       </div>
-      <div className="bg-surface border border-border p-5 space-y-4">
+      <div className="bg-surface border border-border rounded-xl p-5 space-y-4">
         <span className="text-sm font-medium text-white">Hardware Metrics</span>
         <div className="space-y-3">
           <MiniBar label="GPU Utilization" value={78} color="bg-purple" />
@@ -526,7 +591,7 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="bg-surface-2 border border-border p-3">
+    <div className="bg-surface-2 border border-border rounded-lg p-3">
       <div className="text-[10px] text-muted mb-1">{label}</div>
       <div className={`text-[14px] font-mono font-bold ${color}`}>{value}</div>
     </div>

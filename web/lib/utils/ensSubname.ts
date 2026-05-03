@@ -1,7 +1,9 @@
 'use client'
 
-import { BrowserProvider, Contract } from 'ethers'
+import { BrowserProvider, JsonRpcProvider, Contract } from 'ethers'
 import { namehash } from 'viem'
+import type { VersionManifest } from '@/lib/gymStore'
+import { downloadVersionManifest } from '@/lib/utils/upload0g'
 
 // ── L2Registrar on Base Sepolia ───────────────────────────────────────────────
 export const L2_REGISTRAR_ADDRESS = '0xFcCF01179c3e6AB33796a9D2804380D1C609b3bA'
@@ -16,7 +18,11 @@ const REGISTRAR_ABI = [
 
 const REGISTRY_ABI = [
   'function setText(bytes32 node, string key, string value) external',
+  'function text(bytes32 node, string key) view returns (string)',
 ]
+
+// Base Sepolia public RPC — used for read-only calls (no wallet switch needed)
+const BASE_SEPOLIA_RPC = 'https://sepolia.base.org'
 
 // ── Subname type → label suffix ───────────────────────────────────────────────
 const SUFFIX: Record<SubnameType, string> = {
@@ -74,7 +80,7 @@ export async function registerSubname(
   type: SubnameType,
   ownerAddress: string,
 ): Promise<string> {
-  if (L2_REGISTRAR_ADDRESS === '0x0000000000000000000000000000000000000000') {
+  if ((L2_REGISTRAR_ADDRESS as string) === '0x0000000000000000000000000000000000000000') {
     const ensName = buildEnsName(label, type)
     console.warn(`[ensSubname] Registrar not deployed yet. Would register: ${ensName}`)
     return ensName
@@ -91,6 +97,116 @@ export async function registerSubname(
   return buildEnsName(label, type)
 }
 
+// ── General ENS text record setter ───────────────────────────────────────────
+export async function setEnsTextRecord(
+  label: string,
+  type: SubnameType,
+  key: string,
+  value: string,
+): Promise<void> {
+  const signer = await getBaseSepolia()
+  const registry = new Contract(L2_REGISTRY_ADDRESS, REGISTRY_ABI, signer)
+
+  const node = namehash(buildEnsName(label, type))
+  const tx = await registry.setText(node, key, value)
+  await tx.wait()
+}
+
+// ── Read an ENS text record (read-only, no wallet required) ──────────────────
+export async function readEnsTextRecord(
+  ensName: string,  // full name e.g. 'foo-gym.440hz.eth'
+  key: string,
+): Promise<string> {
+  const provider = new JsonRpcProvider(BASE_SEPOLIA_RPC)
+  const registry = new Contract(L2_REGISTRY_ADDRESS, REGISTRY_ABI, provider)
+  const node = namehash(ensName)
+  return (await registry.text(node, key)) as string
+}
+
+// ── Resolve a gym ENS name to its current rootHash via version manifest ───────
+export async function resolveGymEns(gymEnsName: string): Promise<{
+  manifestHash: string | null
+  currentRootHash: string | null
+  manifest: VersionManifest | null
+}> {
+  try {
+    const manifestHash = await readEnsTextRecord(gymEnsName, 'com.440hz.versions')
+    if (!manifestHash) return { manifestHash: null, currentRootHash: null, manifest: null }
+    const manifest = await downloadVersionManifest(manifestHash)
+    return { manifestHash, currentRootHash: manifest.current, manifest }
+  } catch {
+    return { manifestHash: null, currentRootHash: null, manifest: null }
+  }
+}
+
+// ── Enumerate all registered subnames via L2Registrar events ─────────────────
+
+const REGISTRAR_EVENT_ABI = [
+  'event SubnameRegistered(string label, address indexed registrant, bytes32 node)',
+]
+
+export type SubnameRecord = {
+  label: string        // raw label e.g. 'grevin', 'my-gym-gym', 'run1-weights'
+  ensName: string      // full name e.g. 'my-gym-gym.440hz.eth'
+  type: SubnameType
+  displayName: string  // human-readable e.g. 'My Gym'
+  registrant: string   // wallet address
+  blockNumber: number
+}
+
+function labelToType(label: string): SubnameType {
+  if (label.endsWith('-gym')) return 'gym'
+  if (label.endsWith('-model')) return 'model'
+  if (label.endsWith('-weights')) return 'weights'
+  return 'user'
+}
+
+function labelToDisplayName(label: string, type: SubnameType): string {
+  const stripped = type === 'user' ? label
+    : label.slice(0, label.lastIndexOf(`-${type}`))
+  return stripped.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+// Block at which L2Registrar was deployed on Base Sepolia
+const L2_REGISTRAR_DEPLOY_BLOCK = 40_944_763
+// Base Sepolia RPC limits eth_getLogs to 10,000 blocks per request
+const LOG_CHUNK = 9_000
+
+export async function fetchAllSubnames(): Promise<SubnameRecord[]> {
+  const provider = new JsonRpcProvider(BASE_SEPOLIA_RPC)
+  const contract = new Contract(L2_REGISTRAR_ADDRESS, REGISTRAR_EVENT_ABI, provider)
+  const latestBlock = await provider.getBlockNumber()
+
+  // Build chunk ranges from deploy block to latest
+  const ranges: Array<[number, number]> = []
+  for (let from = L2_REGISTRAR_DEPLOY_BLOCK; from <= latestBlock; from += LOG_CHUNK) {
+    ranges.push([from, Math.min(from + LOG_CHUNK - 1, latestBlock)])
+  }
+
+  // Fetch all chunks in parallel (Base Sepolia handles concurrent requests fine)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chunks = await Promise.all(
+    ranges.map(([from, to]) =>
+      contract.queryFilter(contract.filters.SubnameRegistered(), from, to) as Promise<any[]>
+    )
+  )
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return chunks.flat().map((e: any) => {
+    const label: string      = e.args.label      ?? e.args[0]
+    const registrant: string = e.args.registrant ?? e.args[1]
+    const type = labelToType(label)
+    return {
+      label,
+      ensName: `${label}.440hz.eth`,
+      type,
+      displayName: labelToDisplayName(label, type),
+      registrant,
+      blockNumber: e.blockNumber as number,
+    }
+  })
+}
+
 // ── Set ENS avatar text record via Durin L2Registry ──────────────────────────
 // Stores the 0G Storage rootHash as 'com.440hz.avatar' on the subname node.
 export async function setEnsAvatarRecord(
@@ -98,10 +214,5 @@ export async function setEnsAvatarRecord(
   type: SubnameType,
   rootHash: string,
 ): Promise<void> {
-  const signer = await getBaseSepolia()
-  const registry = new Contract(L2_REGISTRY_ADDRESS, REGISTRY_ABI, signer)
-
-  const node = namehash(buildEnsName(label, type))
-  const tx = await registry.setText(node, 'com.440hz.avatar', rootHash)
-  await tx.wait()
+  return setEnsTextRecord(label, type, 'com.440hz.avatar', rootHash)
 }

@@ -10,6 +10,11 @@ import {
 } from '@/lib/contracts'
 
 import { PROVIDER_API, providerFetch } from '@/lib/utils/providerApi'
+import { keccak256, toUtf8Bytes } from 'ethers'
+
+const ZK_SERVER_BASE =
+  (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_ZK_SERVER_URL) ||
+  'http://localhost:3050'
 import {
   ReactFlow, Background, Controls, MiniMap, addEdge,
   useNodesState, useEdgesState, type Connection, type Node, type NodeTypes,
@@ -608,6 +613,61 @@ function NewArenaWizard({
     }
   }
 
+  async function getOrCreateUserZkKeypair(): Promise<{ pubkey: string[]; privkey: string[] } | null> {
+    if (!walletAddress) return null
+    const storageKey = `440hz_zk_keypair_${walletAddress}`
+    try {
+      const cached = localStorage.getItem(storageKey)
+      if (cached) return JSON.parse(cached)
+      const res = await fetch(`${ZK_SERVER_BASE}/sign-keypair`, { signal: AbortSignal.timeout(3000) })
+      if (!res.ok) return null
+      const kp = await res.json()
+      localStorage.setItem(storageKey, JSON.stringify(kp))
+      return kp
+    } catch {
+      return null
+    }
+  }
+
+  async function buildUserZkSignature(
+    taskId: string,
+    escrowAmountWei: bigint,
+    providerAddress: string,
+    keypair: { pubkey: string[]; privkey: string[] },
+  ): Promise<{ signature: unknown; pubkey: string[] } | null> {
+    try {
+      const BN254_FIELD = 2n ** 253n
+      const nonce = (BigInt(keccak256(toUtf8Bytes(taskId))) % BN254_FIELD).toString()
+      const reqFee = escrowAmountWei.toString()
+      const resFee = ((escrowAmountWei * 8n) / 10n).toString()
+      const requestHashInput = `${draft.modelRef}:${draft.gymHash}:${draft.algorithm}`
+      const requestHash = (BigInt(keccak256(toUtf8Bytes(requestHashInput))) % BN254_FIELD).toString()
+
+      const res = await fetch(`${ZK_SERVER_BASE}/signature`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+        body: JSON.stringify({
+          requests: [{
+            nonce,
+            reqFee,
+            userAddress: walletAddress ?? '0x0000000000000000000000000000000000000000',
+            providerAddress,
+            requestHash,
+            resFee,
+          }],
+          privKey: keypair.privkey,
+          signResponse: false,
+        }),
+      })
+      if (!res.ok) return null
+      const { signatures } = await res.json()
+      return { signature: signatures, pubkey: keypair.pubkey }
+    } catch {
+      return null
+    }
+  }
+
   async function handleSubmit() {
     setSubmitting(true)
     setSubmitError('')
@@ -626,6 +686,18 @@ function NewArenaWizard({
       escrowTxHash = await contractDepositJob(task.task_id, providerAddress, draft.gymHash, estimatedCost)
     } catch (e) {
       setSubmitError(`Escrow tx failed: ${(e as Error).message}`)
+    }
+
+    // 2b. Collect user EdDSA signature for ZK settlement (best-effort, non-blocking)
+    let userZkSignature: unknown = null
+    let userZkPubkey: string[] | null = null
+    const zkKeypair = await getOrCreateUserZkKeypair()
+    if (zkKeypair) {
+      const zkSig = await buildUserZkSignature(task.task_id, estimatedCost, providerAddress, zkKeypair)
+      if (zkSig) {
+        userZkSignature = zkSig.signature
+        userZkPubkey = zkSig.pubkey
+      }
     }
 
     // 3. POST job to provider API
@@ -678,6 +750,8 @@ function NewArenaWizard({
           estimated_cost_og: Number(formatEther(estimatedCost || 0n)),
           escrow_tx_hash: escrowTxHash || '0x0',
           escrow_amount_og: Number(formatEther(estimatedCost || 0n)),
+          user_zk_signature: userZkSignature,
+          user_zk_pubkey: userZkPubkey,
         },
       }
       const res = await providerFetch(`/tasks`, {

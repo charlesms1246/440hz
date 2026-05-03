@@ -6,6 +6,7 @@ import { useGymStore, type GymEntry } from '@/lib/gymStore'
 import { downloadGymBundle } from '@/lib/utils/upload0g'
 import { fetchMarketListings, type MarketListing } from '@/lib/utils/kvMarketplace'
 import { contractPurchaseGym } from '@/lib/contracts'
+import { resolveGymEns, buildEnsName } from '@/lib/utils/ensSubname'
 
 const categories = ['All', 'Coding', 'Trading', 'Physics', 'Robotics', 'Math', 'Language']
 
@@ -22,6 +23,13 @@ const SEED_GYMS: MarketListing[] = [
 export default function GymHubPage() {
   const [tab, setTab]           = useState<'owned' | 'marketplace'>('marketplace')
   const [category, setCategory] = useState('All')
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // ENS lookup
+  const [ensQuery, setEnsQuery]     = useState('')
+  const [ensLoading, setEnsLoading] = useState(false)
+  const [ensResult, setEnsResult]   = useState<string | null>(null) // success message
+  const [ensError, setEnsError]     = useState('')
 
   // Marketplace live data
   const [marketListings, setMarketListings] = useState<MarketListing[]>([])
@@ -40,7 +48,42 @@ export default function GymHubPage() {
 
   const { savedGyms, addSavedGym } = useGymStore()
   const ownedCids = new Set(savedGyms.map(g => g.rootHash))
-  const filtered = marketListings.filter(g => category === 'All' || g.category === category)
+
+  const q = searchQuery.toLowerCase()
+  const filtered = marketListings.filter(g =>
+    (category === 'All' || g.category === category) &&
+    (q === '' || g.name.toLowerCase().includes(q) || g.description.toLowerCase().includes(q))
+  )
+
+  async function handleEnsLookup() {
+    if (!ensQuery.trim()) return
+    setEnsLoading(true)
+    setEnsError('')
+    setEnsResult(null)
+    try {
+      // Normalize: if no dot, treat as gym label and build full ENS name
+      const fullName = ensQuery.includes('.')
+        ? ensQuery.trim()
+        : buildEnsName(ensQuery.trim(), 'gym')
+      const { currentRootHash } = await resolveGymEns(fullName)
+      if (!currentRootHash) {
+        setEnsError('ENS name not found or no version manifest set.')
+        return
+      }
+      if (ownedCids.has(currentRootHash)) {
+        setEnsResult(`Already in your library: ${fullName}`)
+        return
+      }
+      const bundle = await downloadGymBundle(currentRootHash)
+      addSavedGym({ rootHash: currentRootHash, name: bundle.projectName, savedAt: new Date().toISOString() })
+      setEnsResult(`Added to library: ${bundle.projectName}`)
+      setEnsQuery('')
+    } catch (e) {
+      setEnsError(e instanceof Error ? e.message : 'Lookup failed')
+    } finally {
+      setEnsLoading(false)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -64,6 +107,40 @@ export default function GymHubPage() {
           </div>
         </div>
       </div>
+
+      {/* Search + ENS lookup (marketplace only) */}
+      {tab === 'marketplace' && (
+        <div className="px-6 py-3 border-b border-border space-y-2">
+          {/* Text search */}
+          <input
+            type="text"
+            placeholder="Search gyms by name or description…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full text-[12px] px-3 py-1.5 bg-surface-2 border border-border text-white placeholder:text-muted/50 focus:outline-none focus:border-purple/40 rounded-lg"
+          />
+          {/* ENS lookup */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="ENS lookup: foo-gym.440hz.eth or just foo"
+              value={ensQuery}
+              onChange={e => { setEnsQuery(e.target.value); setEnsError(''); setEnsResult(null) }}
+              onKeyDown={e => e.key === 'Enter' && !ensLoading && handleEnsLookup()}
+              className="flex-1 text-[12px] px-3 py-1.5 bg-surface-2 border border-border text-white placeholder:text-muted/50 focus:outline-none focus:border-purple/40 rounded-lg"
+            />
+            <button
+              onClick={handleEnsLookup}
+              disabled={ensLoading || !ensQuery.trim()}
+              className="text-[11px] px-3 py-1.5 border border-border text-muted hover:text-white hover:border-purple/40 rounded-lg transition-all disabled:opacity-40"
+            >
+              {ensLoading ? '…' : 'Resolve'}
+            </button>
+          </div>
+          {ensResult && <p className="text-[11px] text-green">{ensResult}</p>}
+          {ensError && <p className="text-[11px] text-signal-red">{ensError}</p>}
+        </div>
+      )}
 
       {/* Category filters (marketplace only) */}
       {tab === 'marketplace' && (

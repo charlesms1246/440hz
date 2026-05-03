@@ -1,45 +1,64 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 
 export type Persona = 'tuner' | 'builder' | 'provider'
 
-interface ProfileState {
+export type FullProfile = {
   username: string
   ensName: string
   persona: Persona
   onboardingComplete: boolean
-  walletAddress: string
   profilePicture: string
-  profilePictureHash: string
-  setUsername: (username: string) => void
-  setEnsName: (ensName: string) => void
-  setPersona: (persona: Persona) => void
-  completeOnboarding: () => void
-  setWalletAddress: (address: string) => void
-  setProfilePicture: (picture: string) => void
-  setProfilePictureHash: (hash: string) => void
-  reset: () => void
+  storageSequence: number
 }
 
-export const useProfileStore = create<ProfileState>()(
-  persist(
-    (set) => ({
-      username: '',
-      ensName: '',
-      persona: 'tuner',
-      onboardingComplete: false,
-      walletAddress: '',
-      profilePicture: '',
-      profilePictureHash: '',
-      setUsername: (username) => set({ username }),
-      setEnsName: (ensName) => set({ ensName }),
-      setPersona: (persona) => set({ persona }),
-      completeOnboarding: () => set({ onboardingComplete: true }),
-      setWalletAddress: (walletAddress) => set({ walletAddress }),
-      setProfilePicture: (profilePicture) => set({ profilePicture }),
-      setProfilePictureHash: (profilePictureHash) => set({ profilePictureHash }),
-      reset: () => set({ username: '', ensName: '', persona: 'tuner', onboardingComplete: false, walletAddress: '', profilePicture: '', profilePictureHash: '' }),
-    }),
-    { name: '440hz-profile' }
-  )
-)
+interface ProfileState extends FullProfile {
+  hydrate: (address: string) => Promise<void>
+  save: (address: string, patch: Partial<FullProfile>) => Promise<FullProfile & { rootHash: string }>
+  setPersona: (persona: Persona) => void
+  setEnsName: (ensName: string) => void
+}
+
+export const useProfileStore = create<ProfileState>()((set) => ({
+  username: '',
+  ensName: '',
+  persona: 'tuner',
+  onboardingComplete: false,
+  profilePicture: '',
+  storageSequence: 0,
+
+  async hydrate(address: string) {
+    const res = await fetch(`/api/profile?address=${address}`)
+    if (!res.ok) return
+    const index: { ensName: string; storageSequence: number } | null = await res.json()
+    if (!index) return
+
+    set({
+      ensName: index.ensName,
+      storageSequence: index.storageSequence,
+      onboardingComplete: index.storageSequence > 0,
+    })
+
+    // Lazily load full bundle (username, persona, profilePicture) from 0G Storage
+    if (index.storageSequence > 0) {
+      fetch(`/api/profile/bundle?sequence=${index.storageSequence}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then((bundle: FullProfile | null) => { if (bundle) set(bundle) })
+        .catch(() => {})
+    }
+  },
+
+  async save(address: string, patch: Partial<FullProfile>) {
+    set(patch as Partial<ProfileState>)
+    const res = await fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, ...patch }),
+    })
+    const saved: FullProfile & { rootHash: string } = await res.json()
+    set(saved)
+    return saved
+  },
+
+  setPersona: (persona) => set({ persona }),
+  setEnsName: (ensName) => set({ ensName }),
+}))

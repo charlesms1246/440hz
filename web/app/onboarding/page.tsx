@@ -7,8 +7,7 @@ import { useProfileStore, type Persona } from "@/lib/profileStore";
 import { zeroGGalileo } from "@/lib/wagmi";
 import { Logo440hz } from "@/app/_components/Logo440hz";
 import { ThemeToggle } from "@/app/_components/ThemeToggle";
-import { registerSubname, buildEnsName, setEnsAvatarRecord } from "@/lib/utils/ensSubname";
-import { uploadProfilePicture } from "@/lib/utils/upload0g";
+import { buildEnsName, setEnsAvatarRecord } from "@/lib/utils/ensSubname";
 
 const personas: { id: Persona; label: string; icon: string; desc: string }[] = [
   {
@@ -43,42 +42,38 @@ export default function OnboardingPage() {
     ensName,
     persona,
     onboardingComplete,
-    walletAddress,
-    setUsername,
-    setEnsName,
+    hydrate,
+    save,
     setPersona,
-    completeOnboarding,
-    setWalletAddress,
-    setProfilePicture: saveProfilePicture,
-    setProfilePictureHash,
-    reset,
   } = useProfileStore();
 
   const [step, setStep] = useState(0);
-  const [inputName, setInputName] = useState(username);
+  const [inputName, setInputName] = useState("");
   const [nameError, setNameError] = useState("");
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [networkOk, setNetworkOk] = useState(false);
   const [checking, setChecking] = useState(false);
 
-  // If already onboarded, go straight to console
+  // On wallet connect: hydrate profile from Redis, redirect if already onboarded
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    hydrate(address).then(() => {
+      const { onboardingComplete: done } = useProfileStore.getState();
+      if (done) {
+        router.push("/console/overview");
+      } else {
+        setStep(1);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, address]);
+
+  // Also redirect if store becomes complete after hydration
   useEffect(() => {
     if (onboardingComplete && isConnected) {
       router.push("/console/overview");
     }
   }, [onboardingComplete, isConnected, router]);
-
-  // Advance to step 1 once wallet is connected
-  useEffect(() => {
-    if (isConnected && step === 0) setStep(1);
-  }, [isConnected, step]);
-
-  // Reset profile when a different wallet connects
-  useEffect(() => {
-    if (address && walletAddress && address.toLowerCase() !== walletAddress.toLowerCase()) {
-      reset();
-    }
-  }, [address, walletAddress, reset]);
 
   const wrongChain = isConnected && chainId !== zeroGGalileo.id;
 
@@ -93,12 +88,15 @@ export default function OnboardingPage() {
       return;
     }
     setNameError("");
-    setUsername(trimmed);
     setStep(2);
   }
 
   async function handleFinish() {
+    if (!address) return;
     setChecking(true);
+
+    const resolvedUsername = inputName.trim();
+
     // Ping 0G DA endpoint
     try {
       await fetch("https://evmrpc-testnet.0g.ai", {
@@ -111,39 +109,41 @@ export default function OnboardingPage() {
       setNetworkOk(false);
     }
 
+    // Server-side ENS registration — server pays gas, user pays nothing
     let resolvedEnsName = ensName;
-
-    // Only register if not already registered for this wallet
-    if (address && username && !ensName) {
+    if (!resolvedEnsName) {
       try {
-        resolvedEnsName = await registerSubname(username, 'user', address);
-        setEnsName(resolvedEnsName);
-      } catch {
-        resolvedEnsName = buildEnsName(username, 'user');
-        setEnsName(resolvedEnsName);
-      }
-    }
-
-    // Upload profile picture to 0G Storage and set ENS avatar record
-    if (profilePicture) {
-      try {
-        const rootHash = await uploadProfilePicture(profilePicture);
-        setProfilePictureHash(rootHash);
-        if (username) {
-          try {
-            await setEnsAvatarRecord(username, 'user', rootHash);
-          } catch {
-            // Best-effort — avatar record is non-critical
-          }
+        const ensRes = await fetch('/api/ens/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: resolvedUsername, ownerAddress: address }),
+        });
+        const ensData = await ensRes.json();
+        if (ensData.ensName) {
+          resolvedEnsName = ensData.ensName;
+        } else {
+          // Fallback: derive the expected name without blocking
+          resolvedEnsName = buildEnsName(resolvedUsername, 'user');
         }
       } catch {
-        // Upload failure is non-critical
+        resolvedEnsName = buildEnsName(resolvedUsername, 'user');
       }
     }
 
-    saveProfilePicture(profilePicture ?? '');
-    if (address) setWalletAddress(address);
-    completeOnboarding();
+    // Server handles 0G Storage upload — send profilePicture as base64 in the payload
+    const saved = await save(address, {
+      username: resolvedUsername,
+      ensName: resolvedEnsName,
+      persona,
+      onboardingComplete: true,
+      profilePicture: profilePicture ?? '',
+    });
+
+    // Best-effort ENS avatar text record (user signs; uses rootHash from 0G upload)
+    if (saved.rootHash && resolvedUsername) {
+      setEnsAvatarRecord(resolvedUsername, 'user', saved.rootHash).catch(() => {});
+    }
+
     setChecking(false);
     router.push("/console/overview");
   }
@@ -159,8 +159,8 @@ export default function OnboardingPage() {
     }
   }
 
-  const injectedConnector = connectors.find((c) => c.id === "injected") ?? connectors[0]
-  const walletName = injectedConnector?.name ?? "Browser Wallet"
+  const injectedConnector = connectors.find((c) => c.id === "injected") ?? connectors[0];
+  const walletName = injectedConnector?.name ?? "Browser Wallet";
 
   return (
     <div
@@ -196,7 +196,6 @@ export default function OnboardingPage() {
           >
             <Logo440hz height={50} />
           </div>
-          {/* <div style={{ fontSize: '0.9vw', color: 'var(--color-muted)', marginTop: '0.2vh' }}>Decentralized AI Training on 0G Network</div> */}
         </div>
 
         {/* Step indicator */}
@@ -304,13 +303,12 @@ export default function OnboardingPage() {
                   }}
                   onMouseEnter={(e) => {
                     if (!isPending && injectedConnector)
-                      e.currentTarget.style.borderColor = "var(--color-highlight)"
+                      e.currentTarget.style.borderColor = "var(--color-highlight)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "var(--color-border)"
+                    e.currentTarget.style.borderColor = "var(--color-border)";
                   }}
                 >
-                  {/* Wallet icon */}
                   <div style={{
                     width: "2.8vw", height: "2.8vw", minWidth: 36, minHeight: 36,
                     borderRadius: "8px",
@@ -395,7 +393,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 1: Username */}
+          {/* Step 1: Username + Profile Picture */}
           {step === 1 && (
             <div
               style={{ display: "flex", flexDirection: "column", gap: "1.5vh" }}
@@ -897,7 +895,7 @@ export default function OnboardingPage() {
                 >
                   <span>Username</span>
                   <span style={{ color: "var(--text)" }}>
-                    {username || inputName}
+                    {inputName || username}
                   </span>
                 </div>
                 <div

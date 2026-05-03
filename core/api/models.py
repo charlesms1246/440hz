@@ -96,6 +96,11 @@ class RuntimeBudget(BaseModel):
     # The provider daemon should verify this before spawning the executor.
     escrow_tx_hash: str
     escrow_amount_og: float = 0.0
+    # ZK settlement: user's EdDSA signature over the job request fields.
+    # Populated by the web UI when the ZK sidecar is reachable at submission time.
+    # If absent, settlement falls back to the oracle path.
+    user_zk_signature: list | None = None
+    user_zk_pubkey: list[str] | None = None
 
 
 # ── Federation (optional) ─────────────────────────────────────────────────────
