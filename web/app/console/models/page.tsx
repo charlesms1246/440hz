@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { downloadAdapterFromStorage } from "@/lib/utils/download0g";
-import { registerSubname, buildEnsName } from "@/lib/utils/ensSubname";
+import { buildEnsName } from "@/lib/utils/ensSubname";
 import { PROVIDER_API, providerFetch } from "@/lib/utils/providerApi";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ type ModelRow = {
   createdAt: string;
   gymImage: string | null;
   mergedRef: string | null;
+  submitterAddress: string;
 };
 
 function toRow(t: ApiTask): ModelRow {
@@ -60,6 +61,7 @@ function toRow(t: ApiTask): ModelRow {
     createdAt: new Date(t.created_at * 1000).toISOString().split("T")[0],
     gymImage: t.receipt?.gym_image ?? null,
     mergedRef: t.receipt?.merged_model_ref ?? null,
+    submitterAddress: t.submitter_address,
   };
 }
 
@@ -127,18 +129,16 @@ export default function ModelsPage() {
     try {
       const filename = `${selected.name.replace(/\s+/g, "-")}-adapter.zip`;
       await downloadAdapterFromStorage(selected.adapterRef, filename);
-      // Register weights.440hz.eth subname — best-effort
+      // Register weights.440hz.eth subname — server pays gas, no wallet prompt
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof window !== 'undefined' && (window as any).ethereum) {
-          const { BrowserProvider } = await import('ethers');
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const provider = new BrowserProvider((window as any).ethereum);
-          const signer = await provider.getSigner();
-          const addr = await signer.getAddress();
-          const ensName = await registerSubname(selected.name, 'weights', addr);
-          setWeightsEnsName(ensName);
-        }
+        const ensName = buildEnsName(selected.name, 'weights');
+        const ownerAddress = selected.submitterAddress ?? '0x0000000000000000000000000000000000000000';
+        fetch('/api/ens/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: `${selected.name}-weights`, ownerAddress }),
+        }).catch(() => {});
+        setWeightsEnsName(ensName);
       } catch {
         setWeightsEnsName(buildEnsName(selected.name, 'weights'));
       }
