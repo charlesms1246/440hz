@@ -1,5 +1,10 @@
-# 440hz - Federated Training Gyms for Frontier LLMs
+<div align="center">
 
+<img src="web/public/440-banner.png" alt="440hz Banner" style="border-radius: 20px;">
+
+# 440Hz
+
+</div>
 440hz is the first decentralized, federated **RLAIF (Reinforcement Learning from AI Feedback)** platform built natively on the **0G ecosystem**. It connects model tuners, domain-expert environment designers, and decentralized hardware providers to enable high-fidelity LLM tuning on edge compute with Zero-Knowledge verified integrity.
 
 ## Summary
@@ -27,6 +32,8 @@ AI labs are hitting the "data wall"—the limit of high-quality, human-generated
 
 - **No-Code Gym UI**: A drag-and-drop builder for experts to create complex Gymnasium training environments without writing Python.
 - **Federated "Edge" Compute**: Using **Parameter-Efficient Fine-Tuning (QLoRA)**, base models are pushed down to the data. Models train locally on edge hardware or within **0G TEEs**, bypassing cloud egress fees entirely.
+- **Sandboxed Arenas**: Provides secure, isolated environments for agents to learn from the consequences of their actions through trial and error—without risking production systems.
+- **Expert Participation**: Enables domain professionals to participate and bring their expertise in specialized fields (legal, medical, engineering) by designing custom Gyms via our no-code IDE.
 - **AI-Overseer Verification (RLAIF)**: Small, fast models (like Mistral Small or MiMo-v2-flash) act as the reward function, automating the RL loop and removing the human bottleneck in training.
 - **ZK Verification (ZKSettlement)**: Guarantees computational integrity via cryptographic proofs. Providers submit ZK proofs to the 0G Chain to verify that the training was executed correctly, enabling trustless settlement without relying solely on TEEs.
 
@@ -225,4 +232,10 @@ cd core
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
-*Built for ETHGlobal 2026 - Leveraging the power of 0G ecosystem.*
+<div align="center">
+Built for ETHGlobal 2026 - Leveraging the power of 0G ecosystem.
+
+### Built by <br>
+
+**Immanuel x Charles**
+</div>
