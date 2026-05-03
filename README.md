@@ -1,16 +1,14 @@
 # 440hz - Federated Training Gyms for Frontier LLMs
 
-![440hz Banner](https://raw.githubusercontent.com/charlesms1246/440hz/main/web/public/banner.png)
-
 440hz is the first decentralized, federated **RLAIF (Reinforcement Learning from AI Feedback)** platform built natively on the **0G ecosystem**. It connects model tuners, domain-expert environment designers, and decentralized hardware providers to enable high-fidelity LLM tuning on edge compute with Zero-Knowledge verified integrity.
 
-## 📖 Summary
+## Summary
 
 To build highly capable, agentic AI, foundation models must move beyond static text prediction and practice in interactive environments. 440hz provides custom-built sandboxes ("Training Gyms") where LLMs can practice multi-step workflows or domain-specific applications through trial and error—without breaking production environments or leaking sensitive IP.
 
 ---
 
-## 🛑 The Problem
+## The Problem
 
 ### 1. The Data Privacy Silo
 The most valuable training data in the world is locked behind corporate firewalls. Enterprises cannot upload highly sensitive data to centralized LLM providers, and competitors cannot share data pools.
@@ -23,7 +21,7 @@ AI labs are hitting the "data wall"—the limit of high-quality, human-generated
 
 ---
 
-## ✅ The Solution
+## The Solution
 
 440hz solves these bottlenecks by decentralizing the simulation environments and federating the compute:
 
@@ -33,7 +31,7 @@ AI labs are hitting the "data wall"—the limit of high-quality, human-generated
 
 ---
 
-## 🏗️ Technical Architecture
+## Technical Architecture
 
 440hz uses a modular, dual-chain architecture integrating the **0G ecosystem** for storage and computation orchestration, alongside **Base Sepolia** for its foundational identity layer.
 
@@ -136,7 +134,7 @@ sequenceDiagram
 
 ---
 
-## ✨ Core Concepts
+## Core Concepts
 
 ### Training Gyms: The Bridge from "Knowing" to "Doing"
 Base models are primarily trained via Supervised Learning (mimicking human text). To reach the next level of intelligence, models need **Reinforcement Learning**, where they learn from the consequences of their actions inside a closed environment with access to problems, datasets, documentation, and software infrastructure.
@@ -149,7 +147,7 @@ We heavily utilize ENS text records to store verifiable metadata. After a model 
 
 ---
 
-## 🔄 User Journey
+## User Journey
 
 1.  **Design & Register**: A developer builds a Gym in the 440hz UI. The compiled container is pushed to 0G Storage.
 2.  **Intent Matching**: A startup submits a training intent on the 0G Chain, locking tokens in escrow, selecting a base model, and choosing the target Gym.
@@ -161,7 +159,7 @@ We heavily utilize ENS text records to store verifiable metadata. After a model 
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Frontend**: Next.js 16 (React 19, Tailwind v4, TypeScript), `@xyflow/react` for node editing.
 - **Backend/Executor**: Python 3.11+, Docker (DinD), PEFT (QLoRA), Transformers, Flower (flwr).
@@ -171,7 +169,7 @@ We heavily utilize ENS text records to store verifiable metadata. After a model 
 
 ---
 
-## 🚦 Getting Started
+## Getting Started
 
 ### 1. Web Frontend
 ```bash
@@ -204,7 +202,7 @@ cd core
 
 ---
 
-## 📄 License
+## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
