@@ -384,10 +384,9 @@ def _finish_task(
     _persist()
     log.info("Task %s finished: state=%s", task_id, state)
 
-    # Trigger on-chain settlement when training completes successfully.
+    # Trigger on-chain settlement and ENS registration when training completes.
     if state == "completed":
         from . import settlement
-        # Load task.json to pass ZK sig fields to the settlement function.
         task_record: dict | None = None
         task_json_path = _STATE_DIR / "tasks" / task_id / "task.json"
         try:
@@ -395,6 +394,41 @@ def _finish_task(
         except Exception:
             pass
         asyncio.create_task(settlement.settle_job(task_id, task_record=task_record))
+
+        # Register weights ENS subname if adapter was uploaded to 0G Storage.
+        receipt = ts.receipt or {}
+        adapter_ref = receipt.get("adapter_ref", "") if isinstance(receipt, dict) else ""
+        arena_name = ts.arena_name or task_id
+        submitter = (task_record or {}).get("metadata", {}).get("submitter_address", "")
+        if isinstance(adapter_ref, str) and adapter_ref.startswith("0x") and submitter:
+            asyncio.create_task(_register_weights_ens(arena_name, submitter))
+
+
+async def _register_weights_ens(arena_name: str, owner_address: str) -> None:
+    """Register a weights ENS subname on Base Sepolia — server pays gas."""
+    import re
+    import aiohttp
+
+    web_url = os.environ.get("WEB_URL", "http://localhost:3000")
+    # Slugify arena name and append -weights suffix to match frontend convention
+    slug = re.sub(r"[^a-z0-9-]", "-", arena_name.lower().strip())
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    username = f"{slug}-weights"
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            res = await session.post(
+                f"{web_url}/api/ens/register",
+                json={"username": username, "ownerAddress": owner_address},
+                timeout=aiohttp.ClientTimeout(total=60),
+            )
+            data = await res.json()
+            if data.get("ensName"):
+                log.info("Weights ENS registered: %s → %s", data["ensName"], owner_address)
+            else:
+                log.warning("Weights ENS registration failed: %s", data)
+    except Exception as exc:
+        log.warning("Weights ENS registration error: %s", exc)
 
 
 # ---------------------------------------------------------------------------

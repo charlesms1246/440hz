@@ -233,10 +233,11 @@ def upload_adapter(
     destination: str,
     encryption_pubkey: Optional[str],
     local_path: Optional[str],
-) -> str:
+) -> tuple[str, int | None]:
     """
-    Package and upload the trained LoRA adapter. Returns either the 0G Storage
-    root hash or the local path, depending on `destination`.
+    Package and upload the trained LoRA adapter.
+    Returns (ref, tx_seq) where ref is the 0G root hash or local path,
+    and tx_seq is the 0G storage sequence ID (None for local).
     """
     src = Path(adapter_dir)
     if not src.exists():
@@ -248,7 +249,7 @@ def upload_adapter(
         if dest.resolve() != src.resolve():
             shutil.copytree(src, dest, dirs_exist_ok=True)
         log.info("Adapter saved locally at %s", dest)
-        return str(dest)
+        return str(dest), None
 
     if destination == "0g_storage":
         # Tar the adapter dir.
@@ -266,7 +267,7 @@ def upload_adapter(
         try:
             data = json.loads(res.strip())
             if "rootHash" in data:
-                return data["rootHash"]
+                return data["rootHash"], data.get("txSeq")
         except Exception:
             pass
         raise StorageError(f"could not parse root hash from upload output: {res!r}")

@@ -97,7 +97,8 @@ async function uploadAdapter(tarPath) {
   if (treeErr) throw treeErr;
 
   const rootHash = result?.rootHash ?? tree.rootHash();
-  console.log(JSON.stringify({ rootHash }));
+  const txSeq = result?.txSeq ?? null;
+  console.log(JSON.stringify({ rootHash, txSeq }));
 }
 
 try {
