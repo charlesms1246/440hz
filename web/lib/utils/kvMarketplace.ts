@@ -156,6 +156,35 @@ export async function fetchMarketListings(): Promise<MarketListing[]> {
   return merged;
 }
 
+export type GymStats = {
+  downloads: number
+  ratingSum: number
+  ratingCount: number
+}
+
+export async function fetchGymStats(rootHashes: string[]): Promise<Record<string, GymStats>> {
+  if (rootHashes.length === 0) return {}
+  const res = await fetch(`/api/marketplace/stats?hashes=${rootHashes.join(',')}`)
+  if (!res.ok) return {}
+  return res.json() as Promise<Record<string, GymStats>>
+}
+
+export async function trackGymDownload(rootHash: string): Promise<void> {
+  await fetch('/api/marketplace/stats', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rootHash, action: 'download' }),
+  }).catch(() => {})
+}
+
+export async function rateGym(rootHash: string, value: number): Promise<void> {
+  await fetch('/api/marketplace/stats', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rootHash, action: 'rate', value }),
+  })
+}
+
 export async function publishGymListing(listing: MarketListing): Promise<void> {
   // Write to 0G KV node (on-chain, decentralised) first.
   // Fall back to Upstash (server-side) if the KV node is unavailable.

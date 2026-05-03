@@ -37,8 +37,20 @@ async function uploadBytesAsUser(bytes: Uint8Array): Promise<string> {
   const eth = typeof window !== 'undefined' && (window as any).ethereum
   if (!eth) throw new Error('No injected wallet found. Connect MetaMask or Rabby first.')
 
-  // Switch to 0G Galileo via wagmi (no picker — just a chain-switch approval if needed)
-  await switchChain(wagmiConfig, { chainId: zeroGGalileo.id })
+  // Switch to 0G Galileo — try wagmi first, fall back to direct wallet RPC
+  // if the wagmi connector isn't ready (e.g., reconnecting after page refresh)
+  try {
+    await switchChain(wagmiConfig, { chainId: zeroGGalileo.id })
+  } catch {
+    try {
+      await eth.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: `0x${zeroGGalileo.id.toString(16)}` }],
+      })
+    } catch (switchErr) {
+      if ((switchErr as { code?: number })?.code !== 4902) throw switchErr
+    }
+  }
 
   // eth_accounts returns already-connected accounts silently (no picker, no eth_requestAccounts)
   const accounts: string[] = await eth.request({ method: 'eth_accounts' })

@@ -34,7 +34,7 @@ export default function ConsoleLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { isConnected, address } = useAccount();
-  const { username, ensName, persona, onboardingComplete, profilePicture, save, setPersona } =
+  const { username, ensName, persona, onboardingComplete, profilePicture, hydrated, save, setPersona } =
     useProfileStore();
 
   // Hydrate profile from Redis when wallet connects
@@ -44,12 +44,13 @@ export default function ConsoleLayout({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, address]);
 
-  // Auth guard
+  // Auth guard — wait for hydration before redirecting to avoid flicker during polling
   useEffect(() => {
+    if (!hydrated) return;
     if (!isConnected || !onboardingComplete) {
       router.push("/onboarding");
     }
-  }, [isConnected, onboardingComplete, router]);
+  }, [hydrated, isConnected, onboardingComplete, router]);
 
   // Compute tab only visible to providers
   const visibleNav = navItems.filter(

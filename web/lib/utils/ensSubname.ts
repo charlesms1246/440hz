@@ -131,12 +131,19 @@ export async function resolveGymEns(gymEnsName: string): Promise<{
 }> {
   try {
     const manifestHash = await readEnsTextRecord(gymEnsName, 'com.440hz.versions')
-    if (!manifestHash) return { manifestHash: null, currentRootHash: null, manifest: null }
-    const manifest = await downloadVersionManifest(manifestHash)
-    return { manifestHash, currentRootHash: manifest.current, manifest }
-  } catch {
-    return { manifestHash: null, currentRootHash: null, manifest: null }
-  }
+    if (manifestHash) {
+      const manifest = await downloadVersionManifest(manifestHash)
+      return { manifestHash, currentRootHash: manifest.current, manifest }
+    }
+  } catch { /* fall through to direct rootHash lookup */ }
+
+  // Fallback: direct rootHash stored on publish (no manifest needed)
+  try {
+    const directHash = await readEnsTextRecord(gymEnsName, 'com.440hz.rootHash')
+    if (directHash) return { manifestHash: null, currentRootHash: directHash, manifest: null }
+  } catch { /* ignore */ }
+
+  return { manifestHash: null, currentRootHash: null, manifest: null }
 }
 
 // ── Enumerate all registered subnames via L2Registrar events ─────────────────

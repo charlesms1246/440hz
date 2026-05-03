@@ -433,6 +433,10 @@ export default function GymBuilderPage() {
         versions: newVersions,
         ensLabel: current?.ensLabel,
       });
+      // Remove the previous entry so the list stays indexed by current version
+      if (currentGymHash && currentGymHash !== rootHash) {
+        removeSavedGym(currentGymHash);
+      }
       setVersionHistory(newVersions);
       setVersionMessage('');
 
@@ -547,7 +551,7 @@ export default function GymBuilderPage() {
         await fetch('/api/ens/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: `${ensLabel}-gym`, ownerAddress: addr || '0x0000000000000000000000000000000000000000' }),
+          body: JSON.stringify({ username: `${ensLabel}-gym`, ownerAddress: addr || '0x0000000000000000000000000000000000000000', rootHash }),
         })
         const ensName = buildEnsName(publishName, 'gym')
         setPublishEnsName(ensName)
