@@ -55,6 +55,10 @@ if [ "$RUNTIME" = "docker" ]; then
     fi
 elif [ "$RUNTIME" = "podman" ]; then
     log "Using rootless podman — no daemon needed."
+elif [ "$RUNTIME" = "external" ]; then
+    # Gym is already running externally (e.g. sibling compose service via GYM_OVERRIDE_URL).
+    # No DinD needed — skip container runtime setup entirely.
+    log "RUNTIME=external: gym provided via GYM_OVERRIDE_URL=${GYM_OVERRIDE_URL:-unset}, skipping DinD."
 else
     log "Unknown RUNTIME=$RUNTIME"
     exit 1

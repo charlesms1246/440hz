@@ -60,6 +60,8 @@ services:
       dockerfile: examples/sample-gym/Dockerfile
     image: 440hz/sample-sql-gym:latest
     container_name: 440hz-gym
+    ports:
+      - "8081:8080"
     networks: [hz_net]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=2)"]
@@ -88,6 +90,8 @@ services:
       # In local compose mode the gym is reachable by service name; the
       # orchestrator's GymContainer wrapper is bypassed via this env var.
       GYM_OVERRIDE_URL: http://gym:8080
+      # Skip DinD — gym is already running as a sibling compose service.
+      RUNTIME: external
       # 0G broker creds. Set these in a `.env` file next to this compose file.
       PRIVATE_KEY: ${PRIVATE_KEY:-}
       RPC_URL: ${RPC_URL:-https://evmrpc-testnet.0g.ai}
