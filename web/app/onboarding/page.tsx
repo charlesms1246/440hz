@@ -7,7 +7,7 @@ import { useProfileStore, type Persona } from "@/lib/profileStore";
 import { zeroGGalileo } from "@/lib/wagmi";
 import { Logo440hz } from "@/app/_components/Logo440hz";
 import { ThemeToggle } from "@/app/_components/ThemeToggle";
-import { buildEnsName, setEnsAvatarRecord } from "@/lib/utils/ensSubname";
+import { buildEnsName } from "@/lib/utils/ensSubname";
 
 const personas: { id: Persona; label: string; icon: string; desc: string }[] = [
   {
@@ -139,9 +139,14 @@ export default function OnboardingPage() {
       profilePicture: profilePicture ?? '',
     });
 
-    // Best-effort ENS avatar text record (user signs; uses rootHash from 0G upload)
+    // Best-effort ENS avatar text record — server pays gas, no wallet prompt
     if (saved.rootHash && resolvedUsername) {
-      setEnsAvatarRecord(resolvedUsername, 'user', saved.rootHash).catch(() => {});
+      const ensName = buildEnsName(resolvedUsername, 'user')
+      fetch('/api/ens/text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ensName, key: 'com.440hz.avatar', value: saved.rootHash }),
+      }).catch(() => {})
     }
 
     setChecking(false);

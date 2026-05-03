@@ -9,4 +9,5 @@ export const redis = new Redis({
 export type ProfileIndex = {
   ensName: string
   storageSequence: number
+  rootHash?: string
 }
