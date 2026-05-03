@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { JsonRpcProvider, Wallet, Contract } from 'ethers'
 import { namehash } from 'viem'
+import { redis } from '@/lib/redis'
 
 const BASE_SEPOLIA_RPC = 'https://sepolia.base.org'
 const L2_REGISTRAR_ADDRESS = '0xFcCF01179c3e6AB33796a9D2804380D1C609b3bA'
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
   try {
     const currentOwner: string = await registry.owner(node)
     if (currentOwner.toLowerCase() === ownerAddress.toLowerCase()) {
+      await redis.sadd(`ens:subnames:${ownerAddress.toLowerCase()}`, ensName)
       return NextResponse.json({ ensName, alreadyRegistered: true })
     }
     if (currentOwner !== '0x0000000000000000000000000000000000000000') {
@@ -78,6 +80,9 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: `Registration failed: ${msg}` }, { status: 500 })
   }
+
+  // Track all subnames for this wallet (for multi-subname picker on re-login)
+  await redis.sadd(`ens:subnames:${ownerAddress.toLowerCase()}`, ensName)
 
   return NextResponse.json({ ensName, alreadyRegistered: false })
 }

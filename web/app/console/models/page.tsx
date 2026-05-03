@@ -254,8 +254,8 @@ export default function ModelsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minHeight: '100%' }}>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Trained <em>Models</em></h1>
-          <p className="page-sub">LoRA adapters and weight inventory from training runs</p>
+          <h1 className="page-title"><em>Models</em></h1>
+          {/* <p className="page-sub">LoRA adapters and weight inventory from training runs</p> */}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn ghost sm">Export All</button>

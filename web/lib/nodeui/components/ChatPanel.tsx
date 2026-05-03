@@ -4,6 +4,7 @@ import { useGraphStore } from '@nodeui/store/graphStore'
 import { AGENT_SYSTEM_PROMPT, CREATE_GRAPH_TOOL } from '@nodeui/utils/agentSystemPrompt'
 import { DEFAULT_COMPUTE_PROVIDER } from '@/lib/contracts'
 import type { AppNode, AppEdge } from '@nodeui/types/graph'
+import { notify } from '@/lib/notificationStore'
 
 type Provider = '0g' | 'openrouter' | 'groq'
 
@@ -140,6 +141,9 @@ export function ChatPanel({ initialMessages, onMessagesChange }: ChatPanelProps 
     if (key) {
       localStorage.setItem(storKey(provider, 'key'), key)
       setApiKey(key)
+      notify('success', `${cfg.label} API key saved`, `Model: ${model}`)
+    } else if (cfg.brokerMode) {
+      notify('info', `${cfg.label} configured`, `Using wallet for auth · Model: ${model}`)
     }
     localStorage.setItem(storKey(provider, 'model'), model)
     setShowSettings(false)

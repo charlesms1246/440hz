@@ -206,7 +206,9 @@ body {
 }
 .sidebar {
   border-radius: 16px;
-  background: var(--card-bg);
+  background: var(--surface);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
   border: var(--card-border);
   display: flex; flex-direction: column;
   align-items: center;
@@ -339,8 +341,11 @@ body {
 /* ── Card primitive ──────────────────────────────────────────── */
 .card {
   background: var(--card-bg);
+  backdrop-filter: blur(var(--card-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--card-blur)) saturate(140%);
   border: var(--card-border);
   border-radius: var(--radius);
+  box-shadow: var(--card-shadow);
   padding: var(--pad-card);
 }
 
@@ -456,6 +461,19 @@ body {
 .light .theme-shell .bg-amber .text-white {
   color: #ffffff;
 }
+
+/* ── Node UI scrollbars ──────────────────────────────────────── */
+.nodeui-scroll::-webkit-scrollbar,
+.react-flow__minimap::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.nodeui-scroll::-webkit-scrollbar-track { background: transparent; }
+.nodeui-scroll::-webkit-scrollbar-thumb {
+  background: var(--nodeui-border-strong);
+  border-radius: 3px;
+}
+.nodeui-scroll::-webkit-scrollbar-thumb:hover { background: var(--nodeui-dim); }
 
 /* ── React Flow overrides ────────────────────────────────────── */
 .react-flow {

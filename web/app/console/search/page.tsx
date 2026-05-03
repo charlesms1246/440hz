@@ -51,8 +51,7 @@ export default function SearchPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div className="page-head">
         <div>
-          <h1 className="page-title">ENS <em>Search</em></h1>
-          <p className="page-sub">Look up users, gyms, models and weights across the 440hz network.</p>
+          <h1 className="page-title"><em>Search</em></h1>
         </div>
       </div>
 

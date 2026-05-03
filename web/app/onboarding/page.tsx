@@ -53,13 +53,27 @@ export default function OnboardingPage() {
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [networkOk, setNetworkOk] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [subnamePicker, setSubnamePicker] = useState<string[] | null>(null);
+  const [pickerLoading, setPickerLoading] = useState(false);
 
   // On wallet connect: hydrate profile from Redis, redirect if already onboarded
   useEffect(() => {
     if (!isConnected || !address) return;
-    hydrate(address).then(() => {
+    hydrate(address).then(async () => {
       const { onboardingComplete: done } = useProfileStore.getState();
       if (done) {
+        // Check for multiple subnames — show picker if more than one
+        try {
+          const res = await fetch(`/api/ens/subnames?address=${address}`);
+          const data = await res.json();
+          const subnames: string[] = data.subnames ?? [];
+          if (subnames.length > 1) {
+            setSubnamePicker(subnames);
+            return;
+          }
+        } catch {
+          // Ignore — fall through to direct redirect
+        }
         router.push("/console/overview");
       } else {
         setStep(1);
@@ -68,14 +82,30 @@ export default function OnboardingPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, address]);
 
-  // Also redirect if store becomes complete after hydration
+  // Also redirect if store becomes complete after hydration (skip if picker is showing)
   useEffect(() => {
-    if (onboardingComplete && isConnected) {
+    if (onboardingComplete && isConnected && !subnamePicker) {
       router.push("/console/overview");
     }
-  }, [onboardingComplete, isConnected, router]);
+  }, [onboardingComplete, isConnected, subnamePicker, router]);
 
   const wrongChain = isConnected && chainId !== zeroGGalileo.id;
+
+  async function handlePickSubname(chosen: string) {
+    if (!address) return;
+    setPickerLoading(true);
+    try {
+      await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, ensName: chosen }),
+      });
+    } catch {
+      // Non-blocking — profile update best-effort
+    }
+    setPickerLoading(false);
+    router.push('/console/overview');
+  }
 
   function handleNameNext() {
     const trimmed = inputName.trim();
@@ -171,6 +201,71 @@ export default function OnboardingPage() {
       <div className="float-tools">
         <div className="float-btn"><ThemeToggle size={16} /></div>
       </div>
+
+      {/* ENS subname picker modal */}
+      {subnamePicker && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 100,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: 420, padding: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+                Choose Your Identity
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--color-muted)' }}>
+                Multiple ENS subnames are registered to this wallet. Select the one you'd like to use.
+              </p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {subnamePicker.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => handlePickSubname(name)}
+                  disabled={pickerLoading}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 14px', borderRadius: 10,
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--surface-2)',
+                    cursor: pickerLoading ? 'not-allowed' : 'pointer',
+                    opacity: pickerLoading ? 0.6 : 1,
+                    transition: 'border-color 0.2s, background 0.2s',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!pickerLoading) {
+                      e.currentTarget.style.borderColor = 'var(--color-highlight)';
+                      e.currentTarget.style.background = 'rgba(183,95,255,0.08)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--color-border)';
+                    e.currentTarget.style.background = 'var(--surface-2)';
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>◈</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '0.9rem', color: 'var(--text)' }}>{name}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--color-highlight)', fontWeight: 500 }}>
+                    Use this →
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => { setSubnamePicker(null); router.push('/console/overview'); }}
+              style={{
+                fontSize: '0.8rem', color: 'var(--color-muted)',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                textDecoration: 'underline', alignSelf: 'center',
+              }}
+            >
+              Skip — continue with current identity
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ position: 'relative', width: '100%', maxWidth: 520 }}>
         {/* Logo */}

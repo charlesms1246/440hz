@@ -24,11 +24,11 @@ export default function GymHubPage() {
   const [tab, setTab]           = useState<'owned' | 'marketplace'>('marketplace')
   const [category, setCategory] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedGym, setSelectedGym] = useState<MarketListing | null>(null)
 
   // ENS lookup
-  const [ensQuery, setEnsQuery]     = useState('')
   const [ensLoading, setEnsLoading] = useState(false)
-  const [ensResult, setEnsResult]   = useState<string | null>(null) // success message
+  const [ensResult, setEnsResult]   = useState<string | null>(null)
   const [ensError, setEnsError]     = useState('')
 
   // Marketplace live data
@@ -55,16 +55,20 @@ export default function GymHubPage() {
     (q === '' || g.name.toLowerCase().includes(q) || g.description.toLowerCase().includes(q))
   )
 
-  async function handleEnsLookup() {
-    if (!ensQuery.trim()) return
+  function looksLikeEns(q: string) {
+    const t = q.trim()
+    return t.endsWith('.eth') || (!t.includes(' ') && t.length > 0 && /^[\w-]+$/.test(t))
+  }
+
+  async function handleEnsLookup(query = searchQuery) {
+    if (!query.trim()) return
     setEnsLoading(true)
     setEnsError('')
     setEnsResult(null)
     try {
-      // Normalize: if no dot, treat as gym label and build full ENS name
-      const fullName = ensQuery.includes('.')
-        ? ensQuery.trim()
-        : buildEnsName(ensQuery.trim(), 'gym')
+      const fullName = query.includes('.')
+        ? query.trim()
+        : buildEnsName(query.trim(), 'gym')
       const { currentRootHash } = await resolveGymEns(fullName)
       if (!currentRootHash) {
         setEnsError('ENS name not found or no version manifest set.')
@@ -77,7 +81,6 @@ export default function GymHubPage() {
       const bundle = await downloadGymBundle(currentRootHash)
       addSavedGym({ rootHash: currentRootHash, name: bundle.projectName, savedAt: new Date().toISOString() })
       setEnsResult(`Added to library: ${bundle.projectName}`)
-      setEnsQuery('')
     } catch (e) {
       setEnsError(e instanceof Error ? e.message : 'Lookup failed')
     } finally {
@@ -90,8 +93,8 @@ export default function GymHubPage() {
       {/* Header */}
       <div className="page-head">
         <div>
-          <h1 className="page-title">Gym <em>Hub</em></h1>
-          <p className="page-sub">Browse and manage training environments</p>
+          <h1 className="page-title"> <em> Gym Hub</em></h1>
+          {/* <p className="page-sub">Browse and manage training environments</p> */}
         </div>
         <div style={{ display: 'flex', background: 'var(--surface-hi)', padding: 3, borderRadius: 10, border: '1px solid var(--border)' }}>
           {(['owned', 'marketplace'] as const).map(t => (
@@ -106,33 +109,27 @@ export default function GymHubPage() {
         </div>
       </div>
 
-      {/* Search + ENS lookup (marketplace only) */}
+      {/* Search (marketplace only) */}
       {tab === 'marketplace' && (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16 }}>
-          <input
-            type="text"
-            placeholder="Search gyms by name or description…"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="ghost-input"
-            style={{ fontSize: 13 }}
-          />
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="text"
-              placeholder="ENS lookup: foo-gym.440hz.eth or just foo"
-              value={ensQuery}
-              onChange={e => { setEnsQuery(e.target.value); setEnsError(''); setEnsResult(null) }}
-              onKeyDown={e => e.key === 'Enter' && !ensLoading && handleEnsLookup()}
+              placeholder="Search by name, description, or ENS (e.g. foo-gym.440hz.eth)…"
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setEnsError(''); setEnsResult(null) }}
+              onKeyDown={e => { if (e.key === 'Enter' && !ensLoading && looksLikeEns(searchQuery)) handleEnsLookup() }}
               className="ghost-input"
-              style={{ flex: 1, fontSize: 12 }}
+              style={{ flex: 1, fontSize: 13 }}
             />
-            <button onClick={handleEnsLookup} disabled={ensLoading || !ensQuery.trim()} className="btn ghost sm">
-              {ensLoading ? '…' : 'Resolve'}
-            </button>
+            {looksLikeEns(searchQuery) && (
+              <button onClick={() => handleEnsLookup()} disabled={ensLoading || !searchQuery.trim()} className="btn ghost sm">
+                {ensLoading ? '…' : 'Resolve ENS'}
+              </button>
+            )}
           </div>
-          {ensResult && <p style={{ fontSize: 11, color: 'var(--ok)' }}>{ensResult}</p>}
-          {ensError && <p style={{ fontSize: 11, color: 'var(--danger)' }}>{ensError}</p>}
+          {ensResult && <p style={{ fontSize: 11, color: 'var(--ok)', margin: 0 }}>{ensResult}</p>}
+          {ensError && <p style={{ fontSize: 11, color: 'var(--danger)', margin: 0 }}>{ensError}</p>}
         </div>
       )}
 
@@ -167,32 +164,50 @@ export default function GymHubPage() {
                 <button onClick={() => setMarketErr('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}>✕</button>
               </div>
             )}
-            {loadingMarket ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                {[0, 1, 2].map(i => (
-                  <div key={i} className="card" style={{ height: 208, opacity: 0.5 }} />
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                {filtered.map(gym => (
-                  <MarketCard
-                    key={gym.rootHash}
-                    gym={gym}
-                    isOwned={ownedCids.has(gym.rootHash)}
-                    onDownload={async () => {
-                      // Only call the contract for paid gyms; free gyms are open-access on 0G Storage
-                      if (gym.cost !== 'Free') {
-                        const priceWei = BigInt(Math.round(parseFloat(gym.cost) * 1e18))
-                        await contractPurchaseGym(gym.rootHash, priceWei)
-                      }
-                      const bundle = await downloadGymBundle(gym.rootHash)
-                      addSavedGym({ rootHash: gym.rootHash, name: bundle.projectName || gym.name, savedAt: new Date().toISOString() })
-                    }}
-                  />
-                ))}
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              {loadingMarket ? (
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="card" style={{ height: 208, opacity: 0.5 }} />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: selectedGym ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 16 }}>
+                  {filtered.map(gym => (
+                    <MarketCard
+                      key={gym.rootHash}
+                      gym={gym}
+                      isOwned={ownedCids.has(gym.rootHash)}
+                      isSelected={selectedGym?.rootHash === gym.rootHash}
+                      onSelect={() => setSelectedGym(prev => prev?.rootHash === gym.rootHash ? null : gym)}
+                      onDownload={async () => {
+                        if (gym.cost !== 'Free') {
+                          const priceWei = BigInt(Math.round(parseFloat(gym.cost) * 1e18))
+                          await contractPurchaseGym(gym.rootHash, priceWei)
+                        }
+                        const bundle = await downloadGymBundle(gym.rootHash)
+                        addSavedGym({ rootHash: gym.rootHash, name: bundle.projectName || gym.name, savedAt: new Date().toISOString() })
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+              {selectedGym && (
+                <GymDetailSidebar
+                  gym={selectedGym}
+                  isOwned={ownedCids.has(selectedGym.rootHash)}
+                  onClose={() => setSelectedGym(null)}
+                  onDownload={async () => {
+                    if (selectedGym.cost !== 'Free') {
+                      const priceWei = BigInt(Math.round(parseFloat(selectedGym.cost) * 1e18))
+                      await contractPurchaseGym(selectedGym.rootHash, priceWei)
+                    }
+                    const bundle = await downloadGymBundle(selectedGym.rootHash)
+                    addSavedGym({ rootHash: selectedGym.rootHash, name: bundle.projectName || selectedGym.name, savedAt: new Date().toISOString() })
+                  }}
+                />
+              )}
+            </div>
           </>
         )}
       </div>
@@ -270,10 +285,14 @@ type DownloadStatus = 'idle' | 'downloading' | 'done' | 'error'
 function MarketCard({
   gym,
   isOwned,
+  isSelected,
+  onSelect,
   onDownload,
 }: {
   gym: MarketListing
   isOwned: boolean
+  isSelected?: boolean
+  onSelect: () => void
   onDownload: () => Promise<void>
 }) {
   const [dlStatus, setDlStatus] = useState<DownloadStatus>('idle')
@@ -314,9 +333,13 @@ function MarketCard({
   const licenseClass = gym.license === 'Open' ? 'running' : gym.license === 'Enterprise' ? 'paused' : 'pending'
 
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, transition: 'transform 0.15s, border-color 0.15s' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.borderColor = ''; }}>
+    <div
+      className="card"
+      onClick={onSelect}
+      style={{ display: 'flex', flexDirection: 'column', gap: 6, transition: 'transform 0.15s, border-color 0.15s', cursor: 'pointer', borderColor: isSelected ? 'var(--accent)' : undefined }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; if (!isSelected) (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; if (!isSelected) (e.currentTarget as HTMLElement).style.borderColor = ''; }}
+    >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
         <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--surface-hi)', display: 'grid', placeItems: 'center', fontSize: 18 }}>{icon}</div>
         <span className={`pill ${licenseClass}`}>{gym.license}</span>
@@ -335,7 +358,141 @@ function MarketCard({
         <span>{gym.downloads?.toLocaleString() ?? '0'} pulls</span>
       </div>
       {dlStatus === 'error' && dlError && <p style={{ fontSize: 10, color: 'var(--danger)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dlError}>{dlError}</p>}
-      <div style={{ marginTop: 'auto', paddingTop: 4 }}>{renderButton()}</div>
+      <div style={{ marginTop: 'auto', paddingTop: 4 }} onClick={e => e.stopPropagation()}>{renderButton()}</div>
+    </div>
+  )
+}
+
+// ── Gym detail sidebar ─────────────────────────────────────────
+
+function GymDetailSidebar({
+  gym,
+  isOwned,
+  onClose,
+  onDownload,
+}: {
+  gym: MarketListing
+  isOwned: boolean
+  onClose: () => void
+  onDownload: () => Promise<void>
+}) {
+  const [dlStatus, setDlStatus] = useState<DownloadStatus>('idle')
+  const [dlError, setDlError]   = useState('')
+  const [copied, setCopied]     = useState(false)
+
+  const icon =
+    gym.category === 'Coding'   ? '💻' :
+    gym.category === 'Trading'  ? '📈' :
+    gym.category === 'Physics'  ? '⚛️' :
+    gym.category === 'Robotics' ? '🤖' :
+    gym.category === 'Math'     ? '🧮' : '💬'
+
+  const licenseClass = gym.license === 'Open' ? 'running' : gym.license === 'Enterprise' ? 'paused' : 'pending'
+  const owned = isOwned || dlStatus === 'done'
+
+  async function handleDownload() {
+    setDlStatus('downloading')
+    setDlError('')
+    try {
+      await onDownload()
+      setDlStatus('done')
+    } catch (e) {
+      setDlError(e instanceof Error ? e.message : 'Download failed')
+      setDlStatus('error')
+      setTimeout(() => setDlStatus('idle'), 4000)
+    }
+  }
+
+  function copyHash() {
+    navigator.clipboard.writeText(gym.rootHash)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const publishedDate = gym.publishedAt
+    ? new Date(gym.publishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
+  return (
+    <div className="card" style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 14, padding: 20, alignSelf: 'flex-start', position: 'sticky', top: 0 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--surface-hi)', display: 'grid', placeItems: 'center', fontSize: 20, flexShrink: 0 }}>{icon}</div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{gym.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{gym.category}</div>
+          </div>
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: 16, lineHeight: 1, padding: 2 }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-3)' }}>✕</button>
+      </div>
+
+      {/* Pills */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <span className={`pill ${licenseClass}`}>{gym.license}</span>
+        <span className="pill" style={{ background: 'var(--surface-hi)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>{gym.category}</span>
+      </div>
+
+      {/* Description */}
+      <p style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6, margin: 0 }}>{gym.description}</p>
+
+      {/* Complexity */}
+      <div>
+        <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>Complexity</div>
+        <ComplexityBar value={gym.complexity} />
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 2 }}>Rating</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>⭐ {gym.rating ?? '—'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 2 }}>Downloads</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{gym.downloads?.toLocaleString() ?? '0'}</div>
+        </div>
+        {gym.cost !== 'Free' && (
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 2 }}>Cost</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--warn)' }}>{gym.cost}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Publisher / date */}
+      {(gym.publishedBy || publishedDate) && (
+        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+          {gym.publishedBy && <span>By <span style={{ color: 'var(--text-2)' }}>{gym.publishedBy}</span></span>}
+          {gym.publishedBy && publishedDate && <span> · </span>}
+          {publishedDate && <span>{publishedDate}</span>}
+        </div>
+      )}
+
+      {/* Hash */}
+      <div
+        className="mono"
+        onClick={copyHash}
+        title={gym.rootHash}
+        style={{ fontSize: 10, color: 'var(--text-3)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '5px 8px', borderRadius: 6, background: 'var(--surface-hi)', border: '1px solid var(--border)' }}
+      >
+        {copied ? '✓ Copied' : `${gym.rootHash.slice(0, 20)}…${gym.rootHash.slice(-6)}`}
+      </div>
+
+      {/* Action */}
+      <div style={{ marginTop: 4 }}>
+        {owned
+          ? <button disabled className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', opacity: 1, color: 'var(--ok)', borderColor: 'oklch(0.78 0.14 150 / 0.3)' }}>✓ In Library</button>
+          : gym.cost !== 'Free'
+            ? <button disabled className="btn ghost sm" style={{ width: '100%', justifyContent: 'center', opacity: 0.6 }} title="On-chain licensing coming soon">License · {gym.cost}</button>
+            : <button onClick={handleDownload} disabled={dlStatus === 'downloading'} className="btn sm" style={{ width: '100%', justifyContent: 'center' }}>
+                {dlStatus === 'downloading' ? '⬇ Pulling from 0G Storage...' : dlStatus === 'error' ? '✕ Failed — retry' : 'Download Free'}
+              </button>
+        }
+        {dlStatus === 'error' && dlError && <p style={{ fontSize: 10, color: 'var(--danger)', marginTop: 6 }}>{dlError}</p>}
+      </div>
     </div>
   )
 }

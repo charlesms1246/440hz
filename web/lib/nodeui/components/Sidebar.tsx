@@ -5,14 +5,30 @@ import { SidebarCategory } from './SidebarCategory'
 import { ChatPanel } from './ChatPanel'
 import { useResize } from '@nodeui/hooks/useResize'
 
-type Mode = 'palette' | 'agent'
+function GitBranchIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="6" y1="3" x2="6" y2="15" />
+      <circle cx="18" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M18 9a9 9 0 0 1-9 9" />
+    </svg>
+  )
+}
+
+type Mode = 'palette' | 'source' | 'agent'
+
+interface SidebarProps {
+  sourceContent?: React.ReactNode
+}
 
 const TABS: { id: Mode; label: string; Icon: React.ElementType }[] = [
   { id: 'palette', label: 'Nodes',    Icon: LayoutGrid },
+  { id: 'source',  label: 'Source',   Icon: GitBranchIcon },
   { id: 'agent',   label: 'AI Agent', Icon: Sparkles   },
 ]
 
-export function Sidebar() {
+export function Sidebar({ sourceContent }: SidebarProps = {}) {
   const [mode, setMode] = useState<Mode>('palette')
   const [collapsed, setCollapsed] = useState(false)
   const [query, setQuery] = useState('')
@@ -35,10 +51,11 @@ export function Sidebar() {
       }}>
         {TABS.map(({ id, Icon }) => {
           const active = mode === id
+          const title = id === 'palette' ? 'Node Palette' : id === 'source' ? 'Source Control' : 'AI Agent'
           return (
             <button
               key={id}
-              title={id === 'palette' ? 'Node Palette' : 'AI Agent'}
+              title={title}
               onClick={() => expand(id)}
               style={{
                 width: 32, height: 32, borderRadius: 7,
@@ -149,12 +166,23 @@ export function Sidebar() {
               }}
             />
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 12px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 12px' }} className="nodeui-scroll">
             {NODE_CATEGORIES.map((group) => (
               <SidebarCategory key={group.category} group={group} query={query} />
             ))}
           </div>
         </>
+      )}
+
+      {/* Source control */}
+      {mode === 'source' && (
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {sourceContent ?? (
+            <div style={{ padding: 16, color: 'var(--nodeui-dim)', fontSize: 12, textAlign: 'center' }}>
+              No source content
+            </div>
+          )}
+        </div>
       )}
 
       {/* Agent */}

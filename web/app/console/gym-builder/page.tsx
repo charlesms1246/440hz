@@ -22,10 +22,19 @@ import {
 } from "@/lib/utils/upload0g";
 import { useGymStore, type VersionEntry } from "@/lib/gymStore";
 import type { VersionManifest } from "@/lib/gymStore";
-import { publishGymListing, type MarketListing } from "@/lib/utils/kvMarketplace";
+import {
+  publishGymListing,
+  type MarketListing,
+} from "@/lib/utils/kvMarketplace";
 import { contractListGym } from "@/lib/contracts";
-import { registerSubname, buildEnsName, slugify, setEnsTextRecord } from "@/lib/utils/ensSubname";
+import {
+  registerSubname,
+  buildEnsName,
+  slugify,
+  setEnsTextRecord,
+} from "@/lib/utils/ensSubname";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
+import { notify } from "@/lib/notificationStore";
 
 const MonacoEditor = dynamic(() => import("./_MonacoEditor"), { ssr: false });
 
@@ -181,16 +190,21 @@ const FILE_TREE = [
 // ── Main page ──────────────────────────────────────────────────
 export default function GymBuilderPage() {
   const [monacoMode, setMonacoMode] = useState(false);
+  const [monacoRightTab, setMonacoRightTab] = useState<"history" | "agent">(
+    "agent",
+  );
   const [storageCid, setStorageCid] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   // ── Chat history (persisted with bundle + localStorage) ──
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
     try {
-      const stored = localStorage.getItem('440hz-chat-draft')
-      if (stored) return JSON.parse(stored) as ChatMessage[]
-    } catch { /* ignore */ }
-    return []
+      const stored = localStorage.getItem("440hz-chat-draft");
+      if (stored) return JSON.parse(stored) as ChatMessage[];
+    } catch {
+      /* ignore */
+    }
+    return [];
   });
 
   // ── Publish modal ──
@@ -206,13 +220,15 @@ export default function GymBuilderPage() {
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishDone, setPublishDone] = useState(false);
-  const [publishListingError, setPublishListingError] = useState<string | null>(null);
+  const [publishListingError, setPublishListingError] = useState<string | null>(
+    null,
+  );
   const [publishingListing, setPublishingListing] = useState(false);
   const [publishEnsName, setPublishEnsName] = useState<string | null>(null);
 
   // ── Save state ──
   const [saving, setSaving] = useState(false);
-  const [versionMessage, setVersionMessage] = useState('');
+  const [versionMessage, setVersionMessage] = useState("");
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [versionHistory, setVersionHistory] = useState<VersionEntry[]>([]);
   const [rollingBack, setRollingBack] = useState(false);
@@ -258,6 +274,7 @@ export default function GymBuilderPage() {
   const pythonUpdatedByGraphRef = useRef(false);
   const syncLockCountRef = useRef(0);
   const isInitialMountRef = useRef(true);
+  const builderRef = useRef<HTMLDivElement>(null);
 
   function lockSync(ms = 2000) {
     syncLockCountRef.current++;
@@ -336,16 +353,18 @@ export default function GymBuilderPage() {
   // ── Effect 4: Persist chat to localStorage ───────────────────
   useEffect(() => {
     try {
-      localStorage.setItem('440hz-chat-draft', JSON.stringify(chatMessages))
-    } catch { /* ignore quota errors */ }
+      localStorage.setItem("440hz-chat-draft", JSON.stringify(chatMessages));
+    } catch {
+      /* ignore quota errors */
+    }
   }, [chatMessages]);
 
   // ── Effect 5: Auto-load gym when navigated from Gym Hub ──────
   useEffect(() => {
-    const hash = sessionStorage.getItem('440hz-open-gym-hash')
+    const hash = sessionStorage.getItem("440hz-open-gym-hash");
     if (hash) {
-      sessionStorage.removeItem('440hz-open-gym-hash')
-      handleOpen(hash)
+      sessionStorage.removeItem("440hz-open-gym-hash");
+      handleOpen(hash);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -404,7 +423,7 @@ export default function GymBuilderPage() {
       const current = savedGyms.find((g) => g.rootHash === currentGymHash);
 
       if (current?.contentHash === newContentHash) {
-        // No content change — skip upload
+        notify("info", "No changes", "Content unchanged since last save.");
         setNoChanges(true);
         setTimeout(() => setNoChanges(false), 2500);
         setSaving(false);
@@ -423,6 +442,11 @@ export default function GymBuilderPage() {
         versionEntry,
       ];
 
+      notify(
+        "success",
+        "Saved to 0G Storage",
+        `CID: ${rootHash.slice(0, 10)}…${rootHash.slice(-6)}`,
+      );
       setStorageCid(rootHash);
       setCurrentGymHash(rootHash);
       addSavedGym({
@@ -434,14 +458,14 @@ export default function GymBuilderPage() {
         ensLabel: current?.ensLabel,
       });
       setVersionHistory(newVersions);
-      setVersionMessage('');
+      setVersionMessage("");
 
       // Phase 2: manifest upload (best-effort, non-blocking)
       const ensLabel = current?.ensLabel;
-      ;(async () => {
+      (async () => {
         try {
           const manifest: VersionManifest = {
-            schemaVersion: '1',
+            schemaVersion: "1",
             gymName: name,
             versions: newVersions,
             current: rootHash,
@@ -449,16 +473,29 @@ export default function GymBuilderPage() {
           const manifestHash = await uploadVersionManifest(manifest);
           updateGymEntry(rootHash, { manifestHash });
           if (ensLabel) {
-            await setEnsTextRecord(ensLabel, 'gym', 'com.440hz.versions', manifestHash);
+            await setEnsTextRecord(
+              ensLabel,
+              "gym",
+              "com.440hz.versions",
+              manifestHash,
+            );
           }
         } catch (e) {
-          setManifestError((e as Error).message);
+          const msg = (e as Error).message;
+          setManifestError(msg);
+          notify(
+            "warning",
+            "Version manifest failed",
+            "History saved locally only.",
+          );
         }
       })();
 
       return rootHash;
     } catch (e) {
-      setUploadError((e as Error).message);
+      const msg = (e as Error).message;
+      setUploadError(msg);
+      notify("error", "Upload failed", msg);
       return null;
     } finally {
       setSaving(false);
@@ -470,7 +507,9 @@ export default function GymBuilderPage() {
     setRollingBack(true);
     setVersionPanelOpen(false);
     await handleOpen(targetHash);
-    const entry = useGymStore.getState().savedGyms.find((g) => g.rootHash === targetHash);
+    const entry = useGymStore
+      .getState()
+      .savedGyms.find((g) => g.rootHash === targetHash);
     if (entry?.versions) setVersionHistory(entry.versions);
     setRollingBack(false);
   }
@@ -507,57 +546,64 @@ export default function GymBuilderPage() {
       const complexity = Math.min(100, Math.round((nodeCount / 20) * 100));
       const listing: MarketListing = {
         rootHash,
-        name:        publishName,
+        name: publishName,
         description: publishDesc,
-        category:    publishCategory as MarketListing['category'],
+        category: publishCategory as MarketListing["category"],
         complexity,
-        license:     publishLicense,
-        cost:        !publishPrice || publishPrice === '0' ? 'Free' : `${publishPrice} $0G`,
+        license: publishLicense,
+        cost:
+          !publishPrice || publishPrice === "0"
+            ? "Free"
+            : `${publishPrice} $0G`,
         publishedAt: new Date().toISOString(),
-        publishedBy: '',  // filled below
+        publishedBy: "", // filled below
       };
       // Try to get wallet address for attribution
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof window !== 'undefined' && (window as any).ethereum) {
-          const { BrowserProvider } = await import('ethers');
+        if (typeof window !== "undefined" && (window as any).ethereum) {
+          const { BrowserProvider } = await import("ethers");
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const provider = new BrowserProvider((window as any).ethereum);
           const signer = await provider.getSigner();
           listing.publishedBy = (await signer.getAddress()).toLowerCase();
         }
-      } catch { /* attribution best-effort */ }
+      } catch {
+        /* attribution best-effort */
+      }
 
       await publishGymListing(listing);
 
       // Write on-chain listing — non-blocking, best-effort alongside KV write
-      const priceWei = !publishPrice || publishPrice === '0'
-        ? 0n
-        : BigInt(Math.round(parseFloat(publishPrice) * 1e18))
+      const priceWei =
+        !publishPrice || publishPrice === "0"
+          ? 0n
+          : BigInt(Math.round(parseFloat(publishPrice) * 1e18));
       await contractListGym(
         rootHash,
         publishName,
         publishCategory,
         publishLicense,
         priceWei,
-      )
+      );
 
       // Register gym.440hz.eth subname on Base Sepolia — best-effort
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof window !== 'undefined' && (window as any).ethereum) {
-          const { BrowserProvider } = await import('ethers');
+        if (typeof window !== "undefined" && (window as any).ethereum) {
+          const { BrowserProvider } = await import("ethers");
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const provider = new BrowserProvider((window as any).ethereum);
           const signer = await provider.getSigner();
           const addr = await signer.getAddress();
-          const ensName = await registerSubname(publishName, 'gym', addr);
+          const ensName = await registerSubname(publishName, "gym", addr);
           setPublishEnsName(ensName);
           // Record ENS label so future saves can write version manifest text record
-          if (rootHash) updateGymEntry(rootHash, { ensLabel: slugify(publishName) });
+          if (rootHash)
+            updateGymEntry(rootHash, { ensLabel: slugify(publishName) });
         }
       } catch {
-        setPublishEnsName(buildEnsName(publishName, 'gym'));
+        setPublishEnsName(buildEnsName(publishName, "gym"));
       }
     } catch (e) {
       setPublishListingError((e as Error).message);
@@ -604,7 +650,9 @@ export default function GymBuilderPage() {
       setStorageCid(hash.trim());
 
       // Restore version history from local store entry if available
-      const entry = useGymStore.getState().savedGyms.find((g) => g.rootHash === hash.trim());
+      const entry = useGymStore
+        .getState()
+        .savedGyms.find((g) => g.rootHash === hash.trim());
       setVersionHistory(entry?.versions ?? []);
 
       setOpenModalVisible(false);
@@ -621,7 +669,23 @@ export default function GymBuilderPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div ref={builderRef} className="flex flex-col h-full overflow-hidden">
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: var(--nodeui-border-strong);
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: var(--nodeui-muted);
+        }
+      `}</style>
       {/* Open from 0G modal */}
       {openModalVisible && (
         <div
@@ -706,21 +770,28 @@ export default function GymBuilderPage() {
                   </span>
                 </div>
                 {publishingListing ? (
-                  <p className="text-[11px] text-muted">Publishing to marketplace…</p>
+                  <p className="text-[11px] text-muted">
+                    Publishing to marketplace…
+                  </p>
                 ) : publishListingError ? (
                   <div className="p-2 border border-amber/30 bg-amber/10 rounded-lg">
                     <p className="text-[11px] text-amber">
-                      ⚠ Gym saved — marketplace listing failed: {publishListingError}
+                      ⚠ Gym saved — marketplace listing failed:{" "}
+                      {publishListingError}
                     </p>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 p-2 bg-green/10 border border-green/20 rounded-lg">
-                    <span className="text-[11px] text-green">✓ Listed on marketplace</span>
+                    <span className="text-[11px] text-green">
+                      ✓ Listed on marketplace
+                    </span>
                   </div>
                 )}
                 {publishEnsName && (
                   <div className="flex items-center gap-2 p-2 bg-purple/10 border border-purple/20 rounded-lg">
-                    <span className="text-[11px] text-purple-300">⬡ {publishEnsName}</span>
+                    <span className="text-[11px] text-purple-300">
+                      ⬡ {publishEnsName}
+                    </span>
                   </div>
                 )}
                 <div className="flex justify-end">
@@ -843,14 +914,20 @@ export default function GymBuilderPage() {
                   </button>
                   <button
                     onClick={handlePublish}
-                    disabled={publishing || publishingListing || !publishName.trim()}
+                    disabled={
+                      publishing || publishingListing || !publishName.trim()
+                    }
                     className={`text-[12px] px-5 py-1.5 rounded-lg font-medium transition-all ${
                       publishing || publishingListing
                         ? "bg-purple/40 text-purple-300 cursor-wait"
                         : "bg-purple hover:bg-purple/80 text-white disabled:opacity-40 disabled:cursor-not-allowed"
                     }`}
                   >
-                    {publishingListing ? "📋 Listing…" : publishing ? "⚙ Publishing…" : "↑ Publish to 0G"}
+                    {publishingListing
+                      ? "📋 Listing…"
+                      : publishing
+                      ? "⚙ Publishing…"
+                      : "↑ Publish to 0G"}
                   </button>
                 </div>
               </>
@@ -859,303 +936,172 @@ export default function GymBuilderPage() {
         </div>
       )}
 
-      {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-solid)', flexShrink: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Gym Builder</span>
-        <div className="w-px h-4 bg-border" />
-
-        {/* Editable project name */}
-        {editingName ? (
-          <input
-            autoFocus
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-            onBlur={() => commitName(nameInput)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitName(nameInput);
-              if (e.key === "Escape") setEditingName(false);
-            }}
-            className="text-[11px] font-mono text-white bg-transparent border border-purple/50 px-2 py-0.5 rounded focus:outline-none w-44"
-          />
-        ) : (
-          <span
-            onClick={() => {
-              setNameInput(projectName);
-              setEditingName(true);
-            }}
-            title="Click to rename"
-            className="text-[11px] font-mono text-muted border border-border px-2 py-0.5 rounded cursor-pointer hover:border-purple/40 hover:text-white transition-colors"
-          >
-            {projectName}
-          </span>
-        )}
-
-        {/* Sync status */}
-        <span
-          className={`text-[10px] px-1.5 py-0.5 rounded font-mono transition-all ${
-            syncStatus === "synced"
-              ? "text-green/60 bg-green/10"
-              : syncStatus === "pending"
-                ? "text-yellow-400/70 bg-yellow-400/10"
-                : syncStatus === "parsing"
-                  ? "text-blue-400/70 bg-blue-400/10"
-                  : "text-orange-400/70 bg-orange-400/10"
-          }`}
-        >
-          {syncStatus === "synced"
-            ? "⟳ synced"
-            : syncStatus === "pending"
-              ? "⟳ …"
-              : syncStatus === "parsing"
-                ? "⟳ parsing"
-                : "✎ manual"}
-        </span>
-
-        {/* Saved hash badge */}
-        {currentGymHash && (
-          <span className="flex items-center gap-1.5 text-[11px] font-mono border border-purple/30 px-2 py-0.5 rounded text-purple/80">
-            <span className="text-muted font-sans">Saved:</span>
-            {currentGymHash.slice(0, 8)}…{currentGymHash.slice(-6)}
-            <button
-              onClick={() => navigator.clipboard.writeText(currentGymHash)}
-              title="Copy full hash"
-              className="text-purple/50 hover:text-purple transition-colors leading-none"
+      {/* Topbar */}
+      <div
+        className="card"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
+          alignItems: "center",
+          padding: "10px 16px",
+          borderRadius: 0,
+          borderLeft: "none",
+          borderRight: "none",
+          borderTop: "none",
+          borderBottom: "none",
+          flexShrink: 0,
+        }}
+      >
+        {/* Left: title */}
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <span style={{ fontSize: 16, fontWeight: 600 }}>
+            <em
+              style={{
+                fontFamily: "var(--font-display)",
+                fontStyle: "italic",
+                fontWeight: 400,
+                color: "var(--accent-2)",
+                fontSize: 20,
+              }}
             >
-              ⎘
-            </button>
+              {" "}
+              Gym Builder
+            </em>
           </span>
-        )}
-
-        <div className="flex-1" />
-
-        {/* My Gyms dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setGymsOpen((g) => !g)}
-            className={`text-[12px] font-medium px-3 py-1.5 rounded-lg border transition-all ${
-              gymsOpen
-                ? "border-purple/40 text-purple bg-purple/10"
-                : "border-border text-muted hover:text-white hover:border-border/60"
-            }`}
-          >
-            My Gyms
-            {savedGyms.length > 0 && (
-              <span className="ml-1.5 text-[10px] bg-purple/20 text-purple px-1 rounded-full">
-                {savedGyms.length}
-              </span>
-            )}
-          </button>
-
-          {gymsOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setGymsOpen(false)}
-              />
-              <div className="absolute right-0 top-full mt-1.5 z-50 w-80 bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
-                <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-white">
-                    Saved Gyms
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-muted">
-                      {savedGyms.length} / 50
-                    </span>
-                    <button
-                      onClick={() => {
-                        setGymsOpen(false);
-                        setOpenModalVisible(true);
-                      }}
-                      className="text-[10px] text-purple/70 hover:text-purple transition-colors"
-                    >
-                      + Open by hash
-                    </button>
-                  </div>
-                </div>
-                {savedGyms.length === 0 ? (
-                  <div className="px-3 py-8 text-center">
-                    <p className="text-[12px] text-muted">No gyms saved yet</p>
-                    <p className="text-[11px] text-muted/50 mt-1">
-                      Click ↑ Save to 0G to save your current gym
-                    </p>
-                  </div>
-                ) : (
-                  <div className="max-h-72 overflow-y-auto divide-y divide-border/50">
-                    {savedGyms.map((entry) => (
-                      <div
-                        key={entry.rootHash}
-                        className="flex items-center gap-2 px-3 py-2.5 hover:bg-white/5 group transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] text-white truncate font-medium">
-                            {entry.name}
-                          </p>
-                          <p className="text-[10px] font-mono text-muted/60 mt-0.5">
-                            {entry.rootHash.slice(0, 8)}…
-                            {entry.rootHash.slice(-6)}
-                            <span className="ml-1.5 font-sans">
-                              · {new Date(entry.savedAt).toLocaleDateString()}
-                            </span>
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            handleOpen(entry.rootHash);
-                            setGymsOpen(false);
-                          }}
-                          className="text-[11px] px-2 py-0.5 rounded border border-purple/30 text-purple hover:bg-purple/10 transition-colors shrink-0"
-                        >
-                          Load
-                        </button>
-                        <button
-                          onClick={() => removeSavedGym(entry.rootHash)}
-                          title="Remove from list"
-                          className="text-[13px] leading-none text-muted/30 hover:text-red-400 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
         </div>
 
-        {/* Version note input */}
-        <input
-          type="text"
-          placeholder="Version note…"
-          value={versionMessage}
-          onChange={(e) => setVersionMessage(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !saving && handleSave()}
-          maxLength={120}
-          className="text-[11px] px-2 py-1.5 w-32 bg-canvas border border-border rounded-lg
-                     text-white placeholder:text-muted/40 focus:outline-none focus:border-purple/40"
-        />
-
-        {/* Version history toggle */}
-        <button
-          onClick={() => setVersionPanelOpen((v) => !v)}
-          className={`text-[12px] font-medium px-2.5 py-1.5 rounded-lg border transition-all flex items-center gap-1 ${
-            versionPanelOpen
-              ? 'border-purple/40 text-purple bg-purple/10'
-              : 'border-border text-muted hover:text-white hover:border-border/60'
-          }`}
-          title="Version history"
+        {/* Center: project name */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
         >
-          ⧖
-          {versionHistory.length > 0 && (
-            <span className="text-[10px] bg-purple/20 text-purple px-1 rounded-full leading-tight">
-              {versionHistory.length}
+          {editingName ? (
+            <input
+              autoFocus
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onBlur={() => commitName(nameInput)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitName(nameInput);
+                if (e.key === "Escape") setEditingName(false);
+              }}
+              style={{
+                fontSize: 11,
+                fontFamily: "var(--font-mono)",
+                background: "transparent",
+                border: "1px solid var(--accent-soft)",
+                padding: "2px 8px",
+                borderRadius: 999,
+                outline: "none",
+                color: "var(--text)",
+                width: 160,
+                textAlign: "center",
+              }}
+            />
+          ) : (
+            <span
+              onClick={() => {
+                setNameInput(projectName);
+                setEditingName(true);
+              }}
+              title="Click to rename"
+              className="pill accent"
+              style={{
+                cursor: "pointer",
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+              }}
+            >
+              {projectName}
             </span>
           )}
-        </button>
-
-        {/* Save to 0G */}
-        <button
-          onClick={() => handleSave()}
-          disabled={saving}
-          className={`text-[12px] font-medium px-3 py-1.5 rounded-lg border transition-all ${
-            saving
-              ? "border-purple/30 text-purple/60 cursor-wait"
-              : "border-purple/40 text-purple hover:bg-purple/10"
-          }`}
-        >
-          {saving ? "↑ Saving…" : "↑ Save to 0G"}
-        </button>
-
-        <div className="w-px h-4 bg-border" />
-
-        {/* Monaco toggle */}
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted">Code Editor</span>
-          <div
-            onClick={() => setMonacoMode((m) => !m)}
-            className={`relative w-9 h-5 rounded-full cursor-pointer transition-colors ${monacoMode ? "bg-purple" : "bg-border"}`}
-          >
-            <div
-              className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${monacoMode ? "translate-x-4" : "translate-x-0.5"}`}
-            />
-          </div>
-          <span className="text-[11px] text-muted">Node Graph</span>
         </div>
 
-        <div className="w-px h-4 bg-border" />
-
-        <button
-          onClick={() => {
-            setPublishOpen(true);
-            setPublishName(projectName);
-            setPublishDone(false);
-            setPublishError(null);
-            setPublishEnsName(null);
+        {/* Right: toggle + publish */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            justifySelf: "end",
           }}
-          className="text-[12px] font-medium px-4 py-1.5 rounded-lg transition-all bg-purple hover:bg-purple/80 text-white"
         >
-          Publish
-        </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, color: "var(--text-3)" }}>Code</span>
+            <div
+              onClick={() => setMonacoMode((m) => !m)}
+              style={{
+                position: "relative",
+                width: 36,
+                height: 20,
+                borderRadius: 999,
+                cursor: "pointer",
+                background: monacoMode
+                  ? "var(--accent)"
+                  : "var(--border-strong)",
+                transition: "background 0.15s",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 3,
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  background: "white",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                  transition: "transform 0.15s",
+                  transform: monacoMode
+                    ? "translateX(18px)"
+                    : "translateX(3px)",
+                }}
+              />
+            </div>
+            <span
+              style={{
+                fontSize: 11,
+                color: monacoMode ? "var(--text-3)" : "var(--text)",
+              }}
+            >
+              Node Graph
+            </span>
+          </div>
+
+          <div
+            style={{ width: 1, height: 16, background: "var(--border-strong)" }}
+          />
+
+          <button
+            onClick={() => {
+              setPublishOpen(true);
+              setPublishName(projectName);
+              setPublishDone(false);
+              setPublishError(null);
+              setPublishEnsName(null);
+            }}
+            className="btn primary sm"
+          >
+            Publish
+          </button>
+        </div>
       </div>
 
-      {/* CID / error banner */}
-      {storageCid && (
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-green/10 border-b border-green/20 shrink-0">
-          <span className="text-[11px] text-green font-medium">
-            0G Storage CID
-          </span>
-          <span className="text-[11px] font-mono text-green/80">
-            {storageCid.slice(0, 10)}…{storageCid.slice(-6)}
-          </span>
-          <button
-            onClick={handleCopyCid}
-            className="text-[10px] px-2 py-0.5 rounded border border-green/30 text-green/70 hover:text-green hover:border-green/60 transition-colors"
-          >
-            Copy
-          </button>
-          <span className="text-[10px] text-green/50 ml-1">
-            · indexed by sequence on 0G
-          </span>
-        </div>
-      )}
-      {noChanges && (
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-blue-500/10 border-b border-blue-500/20 shrink-0">
-          <span className="text-[11px] text-blue-400 font-medium">No changes</span>
-          <span className="text-[11px] text-blue-400/70">Content unchanged since last save.</span>
-        </div>
-      )}
-      {uploadError && (
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 shrink-0">
-          <span className="text-[11px] text-red-400 font-medium">
-            Upload failed
-          </span>
-          <span className="text-[11px] text-red-400/70 truncate">
-            {uploadError}
-          </span>
-        </div>
-      )}
-      {manifestError && (
-        <div className="flex items-center justify-between gap-2 px-4 py-1.5 bg-yellow-500/10 border-b border-yellow-500/20 shrink-0">
-          <span className="text-[11px] text-yellow-400/80 truncate">
-            Version manifest upload failed — history saved locally only
-          </span>
-          <button
-            onClick={() => setManifestError(null)}
-            className="text-[11px] text-yellow-400/50 hover:text-yellow-400 shrink-0"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       {/* 3-pane body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div
+        className="flex flex-1"
+        style={{ borderRadius: 22, overflow: "hidden" }}
+      >
         {monacoMode ? (
           <>
             {/* Left: file tree + symbols */}
             <CodeFileTree
               activeFile={activeFile}
               onFileSelect={handleFileSelect}
+              fileContents={fileContents}
             />
             {/* Center: Monaco */}
             <div style={{ flex: 1, overflow: "hidden" }}>
@@ -1186,7 +1132,7 @@ export default function GymBuilderPage() {
                 />
               </Suspense>
             </div>
-            {/* Right: AI Agent chat */}
+            {/* Right: History + AI Agent tabs */}
             <div
               style={{
                 width: 280,
@@ -1198,49 +1144,617 @@ export default function GymBuilderPage() {
                 overflow: "hidden",
               }}
             >
+              {/* Tab header */}
               <div
                 style={{
-                  padding: "8px 14px",
-                  flexShrink: 0,
+                  display: "flex",
                   borderBottom: "1px solid var(--nodeui-border-subtle)",
+                  flexShrink: 0,
                 }}
               >
-                <span
+                {(["history", "agent"] as const).map((t) => {
+                  const active = monacoRightTab === t;
+                  const label = t === "history" ? "History" : "AI Agent";
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setMonacoRightTab(t)}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 5,
+                        padding: "9px 0",
+                        fontSize: 11,
+                        fontWeight: active ? 700 : 500,
+                        color: active
+                          ? "var(--nodeui-text)"
+                          : "var(--nodeui-dim)",
+                        background: "none",
+                        border: "none",
+                        borderBottom: active
+                          ? "2px solid #6366f1"
+                          : "2px solid transparent",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        transition: "color 0.15s",
+                      }}
+                    >
+                      {label}
+                      {t === "history" && versionHistory.length > 0 && (
+                        <span
+                          style={{
+                            fontSize: 9,
+                            background: "var(--accent-soft)",
+                            color: "var(--accent-2)",
+                            padding: "0 4px",
+                            borderRadius: 999,
+                          }}
+                        >
+                          {versionHistory.length}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {monacoRightTab === "agent" && (
+                <ChatPanel
+                  initialMessages={chatMessages}
+                  onMessagesChange={setChatMessages}
+                />
+              )}
+
+              {monacoRightTab === "history" && (
+                <div
+                  className="nodeui-scroll custom-scrollbar"
                   style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    color: "var(--nodeui-muted)",
+                    flex: 1,
+                    overflowY: "auto",
+                    padding: "8px 10px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
                   }}
                 >
-                  AI Agent
-                </span>
-              </div>
-              <ChatPanel
-                initialMessages={chatMessages}
-                onMessagesChange={setChatMessages}
-              />
+                  {versionHistory.length === 0 ? (
+                    <p
+                      style={{
+                        fontSize: 11,
+                        color: "var(--nodeui-dim)",
+                        textAlign: "center",
+                        paddingTop: 16,
+                      }}
+                    >
+                      No versions saved yet
+                    </p>
+                  ) : (
+                    [...versionHistory].reverse().map((v) => (
+                      <div
+                        key={v.hash}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "6px 8px",
+                          borderRadius: 6,
+                          background: "var(--nodeui-canvas)",
+                          border: "1px solid var(--nodeui-border-strong)",
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 500,
+                              color: "var(--nodeui-text)",
+                              margin: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {v.message || "No message"}
+                          </p>
+                          <p
+                            style={{
+                              fontSize: 9,
+                              fontFamily: "var(--font-mono)",
+                              color: "var(--nodeui-dim)",
+                              margin: 0,
+                            }}
+                          >
+                            {new Date(v.timestamp).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleOpen(v.hash)}
+                          style={{
+                            fontSize: 10,
+                            padding: "2px 7px",
+                            borderRadius: 4,
+                            border: "1px solid var(--accent-soft)",
+                            color: "var(--accent-2)",
+                            background: "none",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            flexShrink: 0,
+                          }}
+                        >
+                          Load
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </>
         ) : (
           <ReactFlowProvider>
-            <Sidebar />
-            <Canvas />
-            <PropertiesPanel />
+            <Sidebar
+              sourceContent={
+                <SourceTabContent
+                  syncStatus={syncStatus}
+                  currentGymHash={currentGymHash}
+                  savedGyms={savedGyms}
+                  saving={saving}
+                  versionMessage={versionMessage}
+                  setVersionMessage={setVersionMessage}
+                  versionHistory={versionHistory}
+                  versionPanelOpen={versionPanelOpen}
+                  setVersionPanelOpen={setVersionPanelOpen}
+                  gymsOpen={gymsOpen}
+                  setGymsOpen={setGymsOpen}
+                  onSave={() => handleSave()}
+                  onOpenByHash={() => setOpenModalVisible(true)}
+                  onLoadGym={(hash) => {
+                    handleOpen(hash);
+                    setGymsOpen(false);
+                  }}
+                  onRemoveGym={removeSavedGym}
+                />
+              }
+            />
+            <Canvas fullscreenTarget={builderRef} />
+            <PropertiesPanel
+              versionHistory={versionHistory}
+              currentHash={currentGymHash}
+              onRollback={handleRollback}
+              rollingBack={rollingBack}
+            />
           </ReactFlowProvider>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Version history drawer */}
-      <VersionHistoryPanel
-        open={versionPanelOpen}
-        onClose={() => setVersionPanelOpen(false)}
-        versions={versionHistory}
-        currentHash={currentGymHash}
-        onRollback={handleRollback}
-        rollingBack={rollingBack}
-      />
+// ── Source tab content (node graph sidebar Source tab) ─────────
+interface SourceTabContentProps {
+  syncStatus: string;
+  currentGymHash: string | null;
+  savedGyms: import("@/lib/gymStore").GymEntry[];
+  saving: boolean;
+  versionMessage: string;
+  setVersionMessage: (v: string) => void;
+  versionHistory: import("@/lib/gymStore").VersionEntry[];
+  versionPanelOpen: boolean;
+  setVersionPanelOpen: (v: boolean) => void;
+  gymsOpen: boolean;
+  setGymsOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
+  onSave: () => void;
+  onOpenByHash: () => void;
+  onLoadGym: (hash: string) => void;
+  onRemoveGym: (hash: string) => void;
+}
+
+function SourceTabContent({
+  syncStatus,
+  currentGymHash,
+  savedGyms,
+  saving,
+  versionMessage,
+  setVersionMessage,
+  versionHistory,
+  versionPanelOpen,
+  setVersionPanelOpen,
+  gymsOpen,
+  setGymsOpen,
+  onSave,
+  onOpenByHash,
+  onLoadGym,
+  onRemoveGym,
+}: SourceTabContentProps) {
+  const section: React.CSSProperties = {
+    padding: "10px 12px",
+    borderBottom: "1px solid var(--nodeui-border-subtle)",
+  };
+  const label: React.CSSProperties = {
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: "0.12em",
+    color: "var(--nodeui-dim)",
+    fontWeight: 600,
+    paddingBottom: 8,
+    display: "block",
+  };
+  const col: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+      {/* Status */}
+      <div style={section}>
+        <span style={label}>Status</span>
+        <div style={col}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "3px 9px",
+              borderRadius: 999,
+              fontSize: 11.5,
+              fontWeight: 500,
+              ...(syncStatus === "synced"
+                ? {
+                    color: "var(--ok)",
+                    border: "1px solid oklch(0.78 0.14 150 / 0.3)",
+                    background: "oklch(0.78 0.14 150 / 0.10)",
+                  }
+                : {
+                    color: "var(--warn)",
+                    border: "1px solid oklch(0.80 0.14 75 / 0.3)",
+                    background: "oklch(0.80 0.14 75 / 0.10)",
+                  }),
+            }}
+          >
+            <span
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: "currentColor",
+                display: "inline-block",
+              }}
+            />
+            {syncStatus === "synced"
+              ? "Synced"
+              : syncStatus === "parsing"
+              ? "Parsing…"
+              : syncStatus === "pending"
+              ? "Pending"
+              : "Manual"}
+          </span>
+
+          {currentGymHash && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "3px 9px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 500,
+                color: "var(--accent-2)",
+                border: "1px solid var(--accent-soft)",
+                background: "var(--accent-soft)",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              <span>Saved&nbsp;</span>
+              <span style={{ opacity: 0.8 }}>
+                {currentGymHash.slice(0, 6)}…{currentGymHash.slice(-4)}
+              </span>
+              <button
+                onClick={() => navigator.clipboard.writeText(currentGymHash)}
+                title="Copy full hash"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "inherit",
+                  opacity: 0.6,
+                  padding: "0 0 0 4px",
+                  fontSize: 12,
+                }}
+              >
+                ⎘
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Version */}
+      <div style={section}>
+        <span style={label}>Version</span>
+        <div style={col}>
+          <input
+            type="text"
+            placeholder="Version note…"
+            value={versionMessage}
+            onChange={(e) => setVersionMessage(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !saving && onSave()}
+            maxLength={120}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "6px 10px",
+              fontSize: 12,
+              background: "var(--nodeui-canvas)",
+              border: "1px solid var(--nodeui-border-strong)",
+              borderRadius: 6,
+              color: "var(--nodeui-text)",
+              outline: "none",
+            }}
+          />
+          <button
+            onClick={() => setVersionPanelOpen(!versionPanelOpen)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              width: "100%",
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 500,
+              background: "none",
+              border: "1px solid var(--nodeui-border-strong)",
+              borderRadius: 6,
+              cursor: "pointer",
+              color: "var(--nodeui-muted)",
+              fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.color =
+                "var(--nodeui-text)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.color =
+                "var(--nodeui-muted)";
+            }}
+          >
+            ⧖ History
+            {versionHistory.length > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  background: "var(--accent-soft)",
+                  color: "var(--accent-2)",
+                  padding: "0 5px",
+                  borderRadius: 999,
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {versionHistory.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Storage */}
+      <div style={section}>
+        <span style={label}>Storage</span>
+        <button
+          onClick={onSave}
+          disabled={saving}
+          style={{
+            width: "100%",
+            padding: "7px 12px",
+            fontSize: 12,
+            fontWeight: 500,
+            background: "none",
+            border: saving
+              ? "1px solid var(--accent-soft)"
+              : "1px solid var(--accent-soft)",
+            borderRadius: 6,
+            cursor: saving ? "wait" : "pointer",
+            color: saving ? "var(--accent-2)" : "var(--accent-2)",
+            fontFamily: "inherit",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            if (!saving)
+              (e.currentTarget as HTMLButtonElement).style.background =
+                "var(--accent-soft)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "none";
+          }}
+        >
+          {saving ? "↑ Saving…" : "↑ Save to 0G"}
+        </button>
+      </div>
+
+      {/* Gyms */}
+      <div
+        style={{
+          ...section,
+          borderBottom: "none",
+          flex: 1,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <span style={label}>My Gyms</span>
+        <div style={col}>
+          <button
+            onClick={() => setGymsOpen((g) => !g)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 500,
+              background: gymsOpen ? "var(--accent-soft)" : "none",
+              border: "1px solid var(--nodeui-border-strong)",
+              borderRadius: 6,
+              cursor: "pointer",
+              color: "var(--nodeui-muted)",
+              fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.color =
+                "var(--nodeui-text)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.color =
+                "var(--nodeui-muted)";
+            }}
+          >
+            <span>My Gyms</span>
+            {savedGyms.length > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  background: "var(--accent-soft)",
+                  color: "var(--accent-2)",
+                  padding: "0 6px",
+                  borderRadius: 999,
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {savedGyms.length}
+              </span>
+            )}
+          </button>
+
+          {gymsOpen && (
+            <div
+              className="custom-scrollbar"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                maxHeight: 220,
+                overflowY: "auto",
+              }}
+            >
+              {savedGyms.length === 0 ? (
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: "var(--nodeui-dim)",
+                    textAlign: "center",
+                    padding: "8px 0",
+                  }}
+                >
+                  No gyms saved yet
+                </p>
+              ) : (
+                Object.values(
+                  savedGyms.reduce((acc, g) => {
+                    if (!acc[g.name] || g.savedAt > acc[g.name].savedAt)
+                      acc[g.name] = g;
+                    return acc;
+                  }, {} as Record<string, (typeof savedGyms)[0]>),
+                ).map((entry) => (
+                  <div
+                    key={entry.rootHash}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "5px 6px",
+                      borderRadius: 6,
+                      background: "var(--nodeui-canvas)",
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 500,
+                          color: "var(--nodeui-text)",
+                          margin: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {entry.name}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: 10,
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--nodeui-dim)",
+                          margin: 0,
+                        }}
+                      >
+                        {entry.rootHash.slice(0, 6)}…{entry.rootHash.slice(-4)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => onLoadGym(entry.rootHash)}
+                      style={{
+                        fontSize: 10,
+                        padding: "2px 7px",
+                        borderRadius: 4,
+                        border: "1px solid var(--accent-soft)",
+                        color: "var(--accent-2)",
+                        background: "none",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Load
+                    </button>
+                    <button
+                      onClick={() => onRemoveGym(entry.rootHash)}
+                      style={{
+                        fontSize: 12,
+                        color: "var(--nodeui-dim)",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        lineHeight: 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))
+              )}
+              <button
+                onClick={onOpenByHash}
+                style={{
+                  fontSize: 10,
+                  color: "var(--accent-2)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "4px 0",
+                  fontFamily: "inherit",
+                  textAlign: "left",
+                }}
+              >
+                + Open by hash
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1249,18 +1763,33 @@ export default function GymBuilderPage() {
 interface CodeFileTreeProps {
   activeFile: string;
   onFileSelect: (name: string) => void;
+  fileContents: Record<string, string>;
 }
 
-function CodeFileTree({ activeFile, onFileSelect }: CodeFileTreeProps) {
-  const pythonSymbols = [
-    { kind: "class", name: "GymEnv" },
-    { kind: "method", name: "reset()" },
-    { kind: "method", name: "step()" },
-    { kind: "method", name: "_get_obs()" },
-    { kind: "function", name: "compute_reward()" },
-    { kind: "variable", name: "observation_space" },
-    { kind: "variable", name: "action_space" },
-  ];
+function extractSymbols(code: string) {
+  const symbols: { kind: string; name: string }[] = [];
+  code.split("\n").forEach((line) => {
+    const cls = line.match(/^class\s+(\w+)/);
+    if (cls) {
+      symbols.push({ kind: "class", name: cls[1] });
+      return;
+    }
+    const fn = line.match(/^(?:\s{4})?def\s+(\w+\(.*?\))/);
+    if (fn)
+      symbols.push({
+        kind: fn[1].startsWith("_") ? "method" : "function",
+        name: fn[1],
+      });
+  });
+  return symbols;
+}
+
+function CodeFileTree({
+  activeFile,
+  onFileSelect,
+  fileContents,
+}: CodeFileTreeProps) {
+  const pythonSymbols = extractSymbols(fileContents[activeFile] ?? "");
 
   return (
     <div
@@ -1333,7 +1862,10 @@ function CodeFileTree({ activeFile, onFileSelect }: CodeFileTreeProps) {
           Symbols
         </span>
       </div>
-      <div style={{ flex: 1, padding: "4px 8px", overflowY: "auto" }}>
+      <div
+        className="custom-scrollbar"
+        style={{ flex: 1, padding: "4px 8px", overflowY: "auto" }}
+      >
         {pythonSymbols.map((s) => (
           <div
             key={s.name}
@@ -1363,19 +1895,19 @@ function CodeFileTree({ activeFile, onFileSelect }: CodeFileTreeProps) {
                   s.kind === "class"
                     ? "#7c3aed"
                     : s.kind === "method"
-                      ? "#22c55e"
-                      : s.kind === "function"
-                        ? "#f59e0b"
-                        : "var(--nodeui-dim)",
+                    ? "#22c55e"
+                    : s.kind === "function"
+                    ? "#f59e0b"
+                    : "var(--nodeui-dim)",
               }}
             >
               {s.kind === "class"
                 ? "C"
                 : s.kind === "method"
-                  ? "M"
-                  : s.kind === "function"
-                    ? "F"
-                    : "V"}
+                ? "M"
+                : s.kind === "function"
+                ? "F"
+                : "V"}
             </span>
             <span
               style={{ fontSize: 11, fontFamily: "var(--font-geist-mono)" }}

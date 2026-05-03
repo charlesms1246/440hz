@@ -181,8 +181,8 @@ function ArenaList({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minHeight: '100%' }}>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Training <em>Arenas</em></h1>
-          <p className="page-sub">Active reinforcement learning sessions</p>
+          <h1 className="page-title"><em>Arenas</em></h1>
+          {/* <p className="page-sub">Active reinforcement learning sessions</p> */}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onNew} className="btn sm">+ New Arena</button>

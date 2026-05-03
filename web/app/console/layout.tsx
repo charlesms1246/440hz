@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useAccount } from "wagmi";
 import { useProfileStore } from "@/lib/profileStore";
 import { ThemeToggle } from "@/app/_components/ThemeToggle";
+import { Notifications } from "@/app/_components/Notifications";
 import Image from "next/image";
 
 const navItems = [
@@ -46,6 +47,7 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
 
   return (
     <div className="app-shell">
+      <Notifications />
       <div className="ambient" />
       <div className="grain" />
 

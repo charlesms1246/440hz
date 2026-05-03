@@ -122,7 +122,7 @@ export default function OverviewPage() {
           <h1 className="page-title"><em>Overview</em></h1>
           {/*<p className="page-sub">Training telemetry and financial health across your federated swarm.</p>*/}
         </div>
-        <span className="pill accent"><span className="dot" />LLM Tuner</span>
+        {/* <span className="pill accent"><span className="dot" />LLM Tuner</span> */}
       </div>
 
       {/* 4-stat grid */}

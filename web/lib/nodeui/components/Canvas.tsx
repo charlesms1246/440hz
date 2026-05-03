@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import {
   ReactFlow,
   Background,
@@ -14,18 +14,24 @@ import { useGraphStore } from '@nodeui/store/graphStore'
 import { REACT_FLOW_NODE_TYPES, NODE_REGISTRY } from '@nodeui/nodes/registry'
 import { NodeType } from '@nodeui/types/nodes'
 import { useThemeStore } from '@/lib/themeStore'
+import { notify } from '@/lib/notificationStore'
 
-export function Canvas() {
+interface CanvasProps {
+  fullscreenTarget?: React.RefObject<HTMLElement | null>
+}
+
+export function Canvas({ fullscreenTarget }: CanvasProps = {}) {
   const {
     nodes, edges, graphVersion,
     onNodesChange, onEdgesChange, onConnect,
-    addNode, setSelectedNode,
+    addNode, setSelectedNode, clearCanvas,
   } = useGraphStore()
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition, fitView } = useReactFlow()
   const theme = useThemeStore(s => s.theme)
   const isDark = theme === 'dark'
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const nodeTypes = useMemo(() => REACT_FLOW_NODE_TYPES, [])
 
@@ -33,6 +39,28 @@ export function Canvas() {
     if (graphVersion === 0) return
     setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50)
   }, [graphVersion, fitView])
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  const toggleFullscreen = useCallback(() => {
+    const el = fullscreenTarget?.current ?? reactFlowWrapper.current
+    if (!el) return
+    if (!document.fullscreenElement) {
+      el.requestFullscreen().catch(() => {})
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
+  }, [fullscreenTarget])
+
+  const handleClearCanvas = useCallback(() => {
+    if (nodes.length === 0) return
+    clearCanvas()
+    notify('info', 'Canvas cleared', `Removed ${nodes.length} node${nodes.length !== 1 ? 's' : ''}`)
+  }, [nodes.length, clearCanvas])
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -48,7 +76,16 @@ export function Canvas() {
   }, [screenToFlowPosition, addNode])
 
   return (
-    <div ref={reactFlowWrapper} style={{ flex: 1, height: '100%', background: 'var(--nodeui-canvas)' }}>
+    <div
+      ref={reactFlowWrapper}
+      style={{
+        flex: 1, height: '100%',
+        background: 'var(--nodeui-canvas)',
+        borderRadius: 12,
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+    >
       <ReactFlow
         nodes={nodes as Parameters<typeof ReactFlow>[0]['nodes']}
         edges={edges}
@@ -89,6 +126,48 @@ export function Canvas() {
           style={{ background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)', borderRadius: 8 }}
         />
       </ReactFlow>
+
+      {/* Canvas overlay toolbar — top right */}
+      <div style={{
+        position: 'absolute', top: 10, right: 10, zIndex: 5,
+        display: 'flex', gap: 4,
+      }}>
+        {/* Clear canvas */}
+        <button
+          onClick={handleClearCanvas}
+          title="Clear all nodes"
+          disabled={nodes.length === 0}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 28, height: 28, borderRadius: 6,
+            background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)',
+            color: 'var(--nodeui-dim)', cursor: nodes.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: nodes.length === 0 ? 0.4 : 1, fontSize: 13,
+            transition: 'color 0.15s, border-color 0.15s',
+          }}
+          onMouseEnter={(e) => { if (nodes.length > 0) { (e.currentTarget as HTMLButtonElement).style.color = '#f43f5e'; (e.currentTarget as HTMLButtonElement).style.borderColor = '#f43f5e44' } }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-border-strong)' }}
+        >
+          ⌫
+        </button>
+
+        {/* Fullscreen */}
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 28, height: 28, borderRadius: 6,
+            background: 'var(--nodeui-node)', border: '1px solid var(--nodeui-border-strong)',
+            color: 'var(--nodeui-dim)', cursor: 'pointer', fontSize: 13,
+            transition: 'color 0.15s, border-color 0.15s',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-text)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-dim)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--nodeui-dim)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--nodeui-border-strong)' }}
+        >
+          {isFullscreen ? '⛶' : '⛶'}
+        </button>
+      </div>
     </div>
   )
 }
