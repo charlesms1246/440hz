@@ -11,6 +11,7 @@ type TaskReceipt = {
   base_model?: string;
   gym_image?: string;
   adapter_ref?: string;
+  adapter_tx_seq?: number;
   final_total_reward?: number;
   final_episode_steps?: number;
   started_at?: number;
@@ -43,6 +44,7 @@ type ModelRow = {
   gymImage: string | null;
   mergedRef: string | null;
   submitterAddress: string;
+  adapterTxSeq: number | null;
 };
 
 function toRow(t: ApiTask): ModelRow {
@@ -62,6 +64,7 @@ function toRow(t: ApiTask): ModelRow {
     gymImage: t.receipt?.gym_image ?? null,
     mergedRef: t.receipt?.merged_model_ref ?? null,
     submitterAddress: t.submitter_address,
+    adapterTxSeq: t.receipt?.adapter_tx_seq ?? null,
   };
 }
 
@@ -357,25 +360,41 @@ export default function ModelsPage() {
               <InfoRow label="Submitted" value={selected.createdAt} />
             </div>
 
-            {/* Storage CID */}
+            {/* Storage CID + Sequence ID */}
             <div>
               <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">
-                0G Storage CID
+                0G Storage
               </div>
               {selected.adapterRef ? (
-                <div className="bg-surface-2 border border-border px-3 py-2 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono text-gray-300 truncate">
-                    {selected.isOnChain
-                      ? selected.adapterRef
-                      : "local — not on 0G"}
-                  </span>
-                  {selected.isOnChain && (
-                    <button
-                      onClick={() => handleCopy(selected.adapterRef!)}
-                      className="shrink-0 text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
-                    >
-                      {copied ? "Copied!" : "Copy"}
-                    </button>
+                <div className="bg-surface-2 border border-border px-3 py-2 space-y-2">
+                  {/* Root hash */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted/70 shrink-0">Hash</span>
+                    <span className="text-[11px] font-mono text-gray-300 truncate">
+                      {selected.isOnChain ? selected.adapterRef : "local — not on 0G"}
+                    </span>
+                    {selected.isOnChain && (
+                      <button
+                        onClick={() => handleCopy(selected.adapterRef!)}
+                        className="shrink-0 text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
+                      >
+                        {copied ? "Copied!" : "Copy"}
+                      </button>
+                    )}
+                  </div>
+                  {/* Sequence ID */}
+                  {selected.adapterTxSeq != null && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-muted/70 shrink-0">Seq ID</span>
+                      <a
+                        href={`https://storagescan-galileo.0g.ai/submission/${selected.adapterTxSeq}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-mono text-purple-400 hover:text-purple-300 hover:underline transition-colors"
+                      >
+                        #{selected.adapterTxSeq} ↗
+                      </a>
+                    </div>
                   )}
                 </div>
               ) : (
