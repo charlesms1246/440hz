@@ -2,10 +2,14 @@
 
 import { MemData, Indexer } from '@0gfoundation/0g-ts-sdk'
 import { BrowserProvider } from 'ethers'
+import { getWalletClient, switchChain } from '@wagmi/core'
+import { wagmiConfig, zeroGGalileo } from '@/lib/wagmi'
 import type { VersionManifest } from '@/lib/gymStore'
 
 const INDEXER_URL = 'https://indexer-storage-testnet-turbo.0g.ai'
-const EVM_RPC = 'https://evmrpc-testnet.0g.ai'
+const EVM_RPC =
+  (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_0G_EVM_RPC) ||
+  'https://evmrpc-testnet.0g.ai'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -23,24 +27,24 @@ export type GymBundle = {
   chat?: ChatEntry[]
 }
 
-// ── Internal: get signer from injected wallet ─────────────────────
+// ── User-wallet upload (0G Galileo) ──────────────────────────────
+// Used for gym bundles, version manifests, and gym source code.
+// The user's wallet on 0G Galileo pays gas — no chain switch needed
+// as long as the wallet is already on 0G Galileo.
 
-async function getSigner() {
+async function uploadBytesAsUser(bytes: Uint8Array): Promise<string> {
+  // Switch to 0G Galileo via wagmi (reuses the existing connection — no wallet picker)
+  await switchChain(wagmiConfig, { chainId: zeroGGalileo.id })
+
+  // Get the already-connected wallet client from wagmi
+  const walletClient = await getWalletClient(wagmiConfig, { chainId: zeroGGalileo.id })
+  if (!walletClient) throw new Error('No connected wallet. Connect your wallet first.')
+
+  // Wrap wagmi's wallet client in an ethers BrowserProvider
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (typeof window === 'undefined' || !(window as any).ethereum) {
-    throw new Error('No injected wallet found. Connect MetaMask or Rabby first.')
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const provider = new BrowserProvider((window as any).ethereum)
-  return provider.getSigner()
-}
+  const signer = await new BrowserProvider(walletClient.transport as any).getSigner()
 
-// ── Internal: upload bytes → root hash ───────────────────────────
-
-async function uploadBytes(bytes: Uint8Array): Promise<string> {
-  const signer = await getSigner()
   const data = new MemData(bytes)
-
   const [tree, treeErr] = await data.merkleTree()
   if (treeErr != null) throw treeErr
 
@@ -48,17 +52,26 @@ async function uploadBytes(bytes: Uint8Array): Promise<string> {
   const [result, uploadErr] = await indexer.upload(data, EVM_RPC, signer)
   if (uploadErr != null) throw uploadErr
 
-  return (result as { rootHash: string }).rootHash ?? tree!.rootHash()
+  return (result as { rootHash?: string } | null)?.rootHash ?? tree!.rootHash()
 }
 
-// ── Public: upload Python code string (legacy, used by Compile) ──
+// ── Server-wallet upload ──────────────────────────────────────────
+// Used for profile pictures (onboarding). Server pays gas — no
+// wallet prompt and no chain-switch required for the user.
 
-/**
- * Uploads a Python gym file to 0G Testnet Storage.
- * @returns Merkle root hash
- */
-export async function uploadGymToStorage(code: string): Promise<string> {
-  return uploadBytes(new TextEncoder().encode(code))
+async function uploadBytesAsServer(bytes: Uint8Array): Promise<string> {
+  const dataBase64 = btoa(String.fromCharCode(...bytes))
+  const res = await fetch('/api/storage/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dataBase64 }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(err.error ?? 'Upload failed')
+  }
+  const { rootHash } = await res.json()
+  return rootHash
 }
 
 // ── Internal: base64 encode/decode for file contents (Unicode-safe) ─
@@ -85,19 +98,20 @@ function decodeFiles(files: Record<string, string>): Record<string, string> {
   return out
 }
 
-// ── Public: upload full gym bundle ───────────────────────────────
-//
-// Wire format: JSON with file contents base64-encoded.
-// In memory (GymBundle type) files are always plain strings.
+// ── Public: upload gym bundle (user wallet) ───────────────────────
 
 export async function uploadGymBundle(bundle: GymBundle): Promise<string> {
   const wire = { ...bundle, files: encodeFiles(bundle.files) }
-  return uploadBytes(new TextEncoder().encode(JSON.stringify(wire)))
+  return uploadBytesAsUser(new TextEncoder().encode(JSON.stringify(wire)))
+}
+
+// ── Public: upload Python code string — legacy (user wallet) ─────
+
+export async function uploadGymToStorage(code: string): Promise<string> {
+  return uploadBytesAsUser(new TextEncoder().encode(code))
 }
 
 // ── Public: SHA-256 fingerprint of wire bytes (no wallet needed) ─
-// Used for change detection: if hash matches the last saved contentHash,
-// skip the upload entirely.
 
 export async function computeBundleHash(bundle: GymBundle): Promise<string> {
   const wire = { ...bundle, files: encodeFiles(bundle.files) }
@@ -108,11 +122,22 @@ export async function computeBundleHash(bundle: GymBundle): Promise<string> {
     .join('')
 }
 
-// ── Public: upload version manifest JSON to 0G Storage ──────────
+// ── Public: upload version manifest (user wallet) ─────────────────
 
 export async function uploadVersionManifest(manifest: VersionManifest): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(manifest))
-  return uploadBytes(bytes)
+  return uploadBytesAsUser(new TextEncoder().encode(JSON.stringify(manifest)))
+}
+
+// ── Public: upload profile picture (server wallet) ────────────────
+// Called from onboarding and settings — server pays gas, no chain prompt.
+
+export async function uploadProfilePicture(dataUrl: string): Promise<string> {
+  const base64 = dataUrl.split(',')[1]
+  if (!base64) throw new Error('Invalid data URL')
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return uploadBytesAsServer(bytes)
 }
 
 // ── Public: download version manifest by root hash ───────────────
@@ -130,22 +155,6 @@ export async function downloadVersionManifest(rootHash: string): Promise<Version
   }
 
   return parsed
-}
-
-// ── Public: upload profile picture (base64 data URL) ─────────────
-
-/**
- * Uploads a profile picture to 0G Testnet Storage.
- * @param dataUrl base64 data URL (e.g. from FileReader.readAsDataURL)
- * @returns Merkle root hash
- */
-export async function uploadProfilePicture(dataUrl: string): Promise<string> {
-  const base64 = dataUrl.split(',')[1]
-  if (!base64) throw new Error('Invalid data URL')
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return uploadBytes(bytes)
 }
 
 // ── Public: download gym bundle by root hash ─────────────────────

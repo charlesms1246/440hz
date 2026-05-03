@@ -79,7 +79,6 @@ export default function ModelsPage() {
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [weightsEnsName, setWeightsEnsName] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [mergeRef, setMergeRef] = useState<string | null>(null);
@@ -128,23 +127,9 @@ export default function ModelsPage() {
     if (!selected?.adapterRef || !selected.isOnChain) return;
     setExporting(true);
     setExportError(null);
-    setWeightsEnsName(null);
     try {
       const filename = `${selected.name.replace(/\s+/g, "-")}-adapter.zip`;
       await downloadAdapterFromStorage(selected.adapterRef, filename);
-      // Register weights.440hz.eth subname — server pays gas, no wallet prompt
-      try {
-        const ensName = buildEnsName(selected.name, 'weights');
-        const ownerAddress = selected.submitterAddress ?? '0x0000000000000000000000000000000000000000';
-        fetch('/api/ens/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: `${selected.name}-weights`, ownerAddress }),
-        }).catch(() => {});
-        setWeightsEnsName(ensName);
-      } catch {
-        setWeightsEnsName(buildEnsName(selected.name, 'weights'));
-      }
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "Download failed");
     } finally {
@@ -447,10 +432,10 @@ export default function ModelsPage() {
               </div>
             )}
 
-            {/* Weights ENS name */}
-            {weightsEnsName && (
+            {/* Weights ENS name — registered server-side on upload */}
+            {selected.isOnChain && (
               <div className="text-[11px] text-purple-300 bg-purple/10 border border-purple/20 px-3 py-2 font-mono">
-                ⬡ {weightsEnsName}
+                ⬡ {buildEnsName(selected.name, 'weights')}
               </div>
             )}
 
