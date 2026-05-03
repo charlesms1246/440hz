@@ -187,6 +187,8 @@ def _build_task_json(req: TaskSubmitRequest, task_id: str) -> dict:
             "escrow_amount_og": req.runtime.escrow_amount_og,
             "estimated_cost_og": req.runtime.estimated_cost_og,
             "max_runtime_seconds": req.runtime.max_runtime_seconds,
+            "user_zk_signature": req.runtime.user_zk_signature,
+            "user_zk_pubkey": req.runtime.user_zk_pubkey,
         },
     }
 
@@ -378,7 +380,14 @@ def _finish_task(
     # Trigger on-chain settlement when training completes successfully.
     if state == "completed":
         from . import settlement
-        asyncio.create_task(settlement.settle_job(task_id))
+        # Load task.json to pass ZK sig fields to the settlement function.
+        task_record: dict | None = None
+        task_json_path = _STATE_DIR / "tasks" / task_id / "task.json"
+        try:
+            task_record = json.loads(task_json_path.read_text())
+        except Exception:
+            pass
+        asyncio.create_task(settlement.settle_job(task_id, task_record=task_record))
 
 
 # ---------------------------------------------------------------------------
